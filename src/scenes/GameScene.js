@@ -6,7 +6,8 @@
  * TelegraphSystem, and presentation from UISystem/FxSystem.
  */
 
-import { ARENA, COLORS, DEPTH, HERO_ZONE } from '../config.js';
+import { ARENA } from '../config.js';
+import ArenaScenery from '../art/ArenaScenery.js';
 import Hero from '../entities/Hero.js';
 import HeroAI from '../ai/HeroAI.js';
 import MonsterAI from '../ai/MonsterAI.js';
@@ -23,6 +24,7 @@ import UISystem from '../ui/UISystem.js';
 import Economy from '../economy/Economy.js';
 import { HEROES } from '../data/heroes.js';
 import { MONSTER_BY_ID, ROLE_LABEL } from '../data/monsters.js';
+import { themeForFloor } from '../data/arenaThemes.js';
 
 const MAX_DT = 1 / 20; // clamp so a tab-out can never teleport the simulation
 
@@ -41,7 +43,8 @@ export default class GameScene extends Phaser.Scene {
       x: ARENA.x, y: ARENA.y, right: ARENA.right, bottom: ARENA.bottom,
     };
 
-    this.#drawArena();
+    /** The room. Rebuilt per floor; owns every static and ambient visual. */
+    this.arena = new ArenaScenery(this);
 
     // order matters: fx first (entities report through it), ui last
     this.economy = new Economy();
@@ -72,6 +75,9 @@ export default class GameScene extends Phaser.Scene {
   startFloor() {
     const cfg = this.tower.config;
 
+    // dress the room before anything is placed in it
+    this.arena.build(themeForFloor(cfg.floor));
+
     // tear down anything left from the previous attempt
     for (const m of this.monsters) m.destroy();
     this.monsters = [];
@@ -80,11 +86,13 @@ export default class GameScene extends Phaser.Scene {
     this.telegraph.reset();
     this.combat.reset();
     this.ultimate.reset();
+    this.fx.resetDecals(); // the previous attempt's scorch marks go with it
     document.body.classList.remove('danger');
 
     this.mana.configure(cfg);
     this.summon.configure(cfg);
     this.summon.reset();
+    this.ui.setFloor(cfg);
     this.ui.buildCards(cfg.unlockedMonsters);
 
     const def = HEROES[cfg.heroId];
@@ -93,7 +101,8 @@ export default class GameScene extends Phaser.Scene {
       ARENA.cx,
       ARENA.cy + 24,
     );
-    this.ui.el.heroName.textContent = def.name.toUpperCase();
+    // after the Hero exists: the dossier reads its unlocked skills
+    this.ui.setHero(def);
 
     this.battle.toIntro();
     this.ui.setDefaultHint('Select a monster (or press 1–5), then click anywhere on the battlefield.');
@@ -176,6 +185,9 @@ export default class GameScene extends Phaser.Scene {
     this.fx.update(realDt);
     const dt = realDt * this.fx.timeScale;
 
+    // the room runs on real time: torches keep burning through hitstop
+    this.arena.update(realDt);
+
     if (this.battle.running) {
       this.clock += dt;
 
@@ -194,55 +206,11 @@ export default class GameScene extends Phaser.Scene {
       for (const m of this.monsters) m.syncSprite();
     }
 
-    this.summon.update();
+    // the sigil turns on real time too — a frozen cursor during hitstop reads
+    // as the game having hung
+    this.summon.update(realDt);
     this.ui.update();
 
     this.monsters = this.monsters.filter((m) => !m.destroyed);
-  }
-
-  // ═══ arena backdrop ══════════════════════════════════════════════════════
-  #drawArena() {
-    const g = this.add.graphics().setDepth(DEPTH.floor);
-
-    // outer wall
-    g.fillStyle(COLORS.wall, 1);
-    g.fillRect(0, 0, ARENA.right + ARENA.x, ARENA.bottom + 128);
-
-    // floor plate
-    g.fillStyle(COLORS.floorDark, 1);
-    g.fillRect(ARENA.x, ARENA.y, ARENA.w, ARENA.h);
-
-    // 24px checker so movement and distance read clearly
-    g.fillStyle(COLORS.floorLight, 1);
-    const t = 24;
-    for (let y = 0; y * t < ARENA.h; y++) {
-      for (let x = 0; x * t < ARENA.w; x++) {
-        if ((x + y) % 2 !== 0) continue;
-        g.fillRect(
-          ARENA.x + x * t,
-          ARENA.y + y * t,
-          Math.min(t, ARENA.w - x * t),
-          Math.min(t, ARENA.h - y * t),
-        );
-      }
-    }
-
-    // central hero domain — the player may still summon anywhere on the floor
-    g.fillStyle(0x2a1c2e, 0.5);
-    g.fillRect(HERO_ZONE.x, ARENA.y, HERO_ZONE.w, ARENA.h);
-    g.lineStyle(1, 0x5a3a52, 0.6);
-    g.strokeRect(HERO_ZONE.x, ARENA.y, HERO_ZONE.w, ARENA.h);
-
-    // frame
-    g.lineStyle(2, 0x0b0912, 1);
-    g.strokeRect(ARENA.x - 1, ARENA.y - 1, ARENA.w + 2, ARENA.h + 2);
-
-    this.add.text(HERO_ZONE.x + 6, ARENA.y + 5, 'HERO DOMAIN', {
-      fontFamily: 'monospace', fontSize: '8px', color: '#6b4a63',
-    }).setDepth(DEPTH.floor + 1);
-
-    this.add.text(ARENA.x + 8, ARENA.y + 5, 'SUMMON ANYWHERE', {
-      fontFamily: 'monospace', fontSize: '8px', color: '#39d4a0',
-    }).setDepth(DEPTH.floor + 1).setAlpha(0.7);
   }
 }

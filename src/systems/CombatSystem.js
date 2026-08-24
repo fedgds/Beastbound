@@ -49,7 +49,9 @@ class Projectile {
 
   kill() {
     this.dead = true;
-    this.scene.fx.hitSpark(this.x, this.y, this.tint ?? COLORS.white, 3);
+    // spend the bolt's own momentum: shards carry on the way it was flying
+    this.scene.fx.hitSpark(this.x, this.y, this.tint ?? COLORS.white, 3,
+      Math.atan2(this.vy, this.vx));
     this.sprite.destroy();
     return undefined;
   }

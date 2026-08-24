@@ -105,8 +105,15 @@ export default class Entity {
     const dealt = Math.max(1, Math.round(amount * this.status.drMult));
     this.hp = Math.max(0, this.hp - dealt);
 
+    const chest = this.y - this.spriteHeight * 0.5;
     this.scene.fx.damageNumber(this.x, this.y - this.spriteHeight - 6, dealt, opts);
-    this.scene.fx.hitSpark(this.x, this.y - this.spriteHeight * 0.5, opts.color ?? COLORS.dmgPhysical);
+    // sparks leave along the line the blow travelled, so a hit reads as having
+    // come *from* the attacker rather than as a generic burst
+    const src = opts.source;
+    const dir = src
+      ? Math.atan2(chest - (src.y - src.spriteHeight * 0.5), this.x - src.x)
+      : null;
+    this.scene.fx.hitSpark(this.x, chest, opts.color ?? COLORS.dmgPhysical, 5, dir);
 
     if (this.hp <= 0) {
       this.die();

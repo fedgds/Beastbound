@@ -4,6 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Tower Climb — Auto-Battler Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400..700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="styles/ui.css" />
 </head>
 <body>
@@ -15,31 +18,65 @@
   <!-- ============ HTML/CSS overlay UI ============ -->
   <div id="ui">
 
-    <!-- ---------- top bar ---------- -->
+    <!-- ---------- top bar: where the run stands, and who is in the room ------ -->
     <header id="topbar">
-      <div id="floor-badge">
-        <span class="label">FLOOR</span>
-        <span id="floor-num">1</span><span class="dim">/3</span>
-      </div>
 
-      <div id="hero-block">
-        <div id="hero-line">
-          <span id="hero-name">GOLDEN KNIGHT</span>
-          <span id="hero-tags"></span>
-          <span id="hero-hp-text">0/0</span>
+      <!-- Carved floor plaque. Cleared floors and remaining attempts are both
+           run state that used to be invisible. -->
+      <div id="floor-plaque">
+        <span class="eyebrow">FLOOR</span>
+        <div class="plaque-read">
+          <span id="floor-num">1</span><span id="floor-total" class="dim">/3</span>
         </div>
-        <div class="bar hp-bar"><div id="hero-hp-fill" class="fill"></div></div>
-        <div class="bar ult-bar">
-          <div id="hero-ult-fill" class="fill"></div>
-          <span class="bar-cap">ULT</span>
+        <div id="floor-pips" class="pips"></div>
+        <div class="tries-row">
+          <span class="eyebrow">TRIES</span>
+          <div id="lives-pips" class="pips"></div>
         </div>
       </div>
 
-      <div id="legend">
+      <!-- The intruder's dossier. -->
+      <section id="intruder">
+        <div id="hero-portrait"><img id="hero-face" alt="" /></div>
+
+        <div id="hero-readout">
+          <div id="hero-line">
+            <span class="eyebrow">INTRUDER</span>
+            <span id="hero-name">GOLDEN KNIGHT</span>
+            <span id="hero-tags"></span>
+            <span id="hero-hp-text">0/0</span>
+          </div>
+
+          <div class="bar hp-bar">
+            <div id="hero-hp-trail" class="trail"></div>
+            <div id="hero-hp-fill" class="fill"></div>
+            <div class="ticks ticks-8"></div>
+          </div>
+
+          <div id="hero-lower">
+            <div id="ult-block">
+              <span class="eyebrow">ULT</span>
+              <div class="bar ult-bar">
+                <div id="hero-ult-fill" class="fill"></div>
+                <div class="ticks ticks-4"></div>
+              </div>
+            </div>
+            <!-- one chip per unlocked hero skill; UISystem fills these -->
+            <div id="hero-skills"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- The room's name, chiselled into the lintel above the door. -->
+      <div id="floor-title">GATEHOUSE</div>
+
+      <!-- Telegraph colour language — the contract the player reads. -->
+      <aside id="legend">
+        <span class="eyebrow">TELLS</span>
         <div class="legend-row"><i class="swatch red"></i>AoE damage</div>
         <div class="legend-row"><i class="swatch yellow"></i>Buff / heal</div>
         <div class="legend-row"><i class="swatch purple"></i>Control</div>
-      </div>
+      </aside>
     </header>
 
     <!-- ---------- centre banner / telegraph callout ---------- -->
@@ -51,19 +88,30 @@
       <button id="banner-btn" type="button">BEGIN</button>
     </div>
 
-    <!-- ---------- bottom bar ---------- -->
+    <!-- ---------- bottom bar: what you can spend, and on what ---------- -->
     <footer id="bottombar">
-      <div id="mana-block">
-        <div class="mana-line">
-          <span class="label">MANA</span>
+
+      <div id="resources">
+        <div class="res-head">
+          <span class="eyebrow">MANA</span>
           <span id="mana-text">6/12</span>
         </div>
-        <div class="bar mana-bar"><div id="mana-fill" class="fill"></div></div>
-        <div class="mana-line essence-line">
-          <span class="label dim">ESSENCE</span>
+        <!-- The signature readout: one socket per mana point, so a summon cost
+             is something you count rather than something you calculate. -->
+        <div id="mana-shards" class="shards"></div>
+
+        <div class="res-head">
+          <span class="eyebrow">ESSENCE</span>
           <span id="essence-text">60</span>
         </div>
-        <div class="bar essence-bar"><div id="essence-fill" class="fill"></div></div>
+        <div class="bar essence-bar">
+          <div id="essence-fill" class="fill"></div>
+          <div class="ticks ticks-8"></div>
+        </div>
+
+        <div id="field-count">
+          <b id="alive-num">0</b><span class="dim"> on the field</span>
+        </div>
       </div>
 
       <!-- monster cards are generated by UISystem -->

@@ -5,19 +5,32 @@
  */
 
 export const GAME_W = 1152;
-export const GAME_H = 580;
+export const GAME_H = 672;
 
-/** The battlefield rect the Phaser canvas draws into (below the top HTML bar,
- *  above the bottom HTML bar). */
-export const ARENA = { x: 16, y: 76, w: 1120, h: 376 };
+/**
+ * Height of the HTML bars that sit over the canvas. `styles/ui.css` must use the
+ * same two numbers — the wall band tucks under `HUD.top` and the foreground lip
+ * meets `HUD.bottom`, so a mismatch shows up as a seam.
+ */
+export const HUD = { top: 84, bottom: 136 };
+
+/** Back wall band drawn above the floor. Purely scenery — nothing walks here. */
+export const WALL = { y: HUD.top, h: 116 };
+WALL.bottom = WALL.y + WALL.h; // 200
+
+/** The battlefield rect: 20 x 8 slabs, exactly. */
+export const ARENA = { x: 16, y: WALL.bottom, w: 1120, h: 336 };
 ARENA.right = ARENA.x + ARENA.w;
-ARENA.bottom = ARENA.y + ARENA.h;
+ARENA.bottom = ARENA.y + ARENA.h; // 536 = GAME_H - HUD.bottom
 ARENA.cx = ARENA.x + ARENA.w / 2;
 ARENA.cy = ARENA.y + ARENA.h / 2;
 
 /** Central home area the hero patrols while idle. It can still chase anywhere
  * in the arena (see Hero.moveBounds()). */
 export const HERO_ZONE = { x: ARENA.cx - 144, w: 288 };
+
+/** Size of one floor slab, in px. Divides ARENA exactly: 20 cols x 8 rows. */
+export const TILE = { w: 56, h: 42 };
 
 export const COLORS = {
   // arena
@@ -49,6 +62,7 @@ export const COLORS = {
 /** Render order. */
 export const DEPTH = {
   floor: 0,
+  floorDecal: 2, // scorch marks, blood, footprints burned into the stone
   gridBase: 5,
   gridMark: 6,
   aggro: 10,
@@ -60,7 +74,10 @@ export const DEPTH = {
   projectile: 30,
   telegraphAir: 34,
   hpbar: 40,
+  wallFront: 44, // the wall's cast shadow + foreground lip
+  light: 46, // additive torch pools and light shafts
   popup: 50,
+  vignette: 60,
 };
 
 /** Damage / status tuning shared by several systems. */

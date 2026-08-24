@@ -278,7 +278,10 @@ export default class SkillSystem {
     d.spark -= dt;
     if (d.spark <= 0) {
       d.spark = DASH_SPARK_EVERY;
-      this.scene.fx.hitSpark(monster.x, monster.y - 8, COLORS.dmgCrit, 2);
+      // the trail throws *backwards*: sparks shed behind a charge, not ahead
+      const back = Math.atan2(d.sy - d.ty, d.sx - d.tx);
+      this.scene.fx.hitSpark(monster.x, monster.y - 8, COLORS.dmgCrit, 2, back);
+      this.scene.fx.footDust(monster.x, monster.y, d.tx > d.sx ? 1 : -1);
     }
 
     if (p < 1) return;
@@ -320,6 +323,7 @@ export default class SkillSystem {
           hero, hero.x, hero.y - 10, eff.radius, dmg, { knockback: eff.knockback },
         );
         this.scene.fx.ring(hero.x, hero.y - 10, eff.radius, COLORS.tgDamage, 380, 4);
+        this.scene.fx.scorch(hero.x, hero.y, eff.radius * 0.62);
         this.scene.fx.impact({ color: COLORS.tgDamage, shake: 0.013, flash: 0.3, stop: 100 });
         this.#report(skill, victims.length);
         break;
@@ -365,6 +369,8 @@ export default class SkillSystem {
     });
     this.scene.fx.ring(x, y, radius, COLORS.tgDamage, 480, 5);
     this.scene.fx.ring(x, y, radius * 0.6, COLORS.white, 300, 3);
+    // the ultimate leaves the floor's biggest scar — the room remembers it
+    this.scene.fx.scorch(x, y, radius * 0.8);
     this.scene.fx.impact({ color: COLORS.tgDamage, shake: 0.022, flash: 0.5, stop: 130 });
   }
 

@@ -1,32 +1,56 @@
 /* ============================================================================
    Tower Climb — HTML/CSS overlay UI (spec §6, §11)
-   The Phaser canvas draws the battlefield; everything here floats above it.
-   Only interactive controls capture pointer events, so grid clicks always
-   reach the canvas.
+
+   The Phaser canvas draws the room; everything here is the dungeon's own
+   instrumentation bolted over it. Only interactive controls capture pointer
+   events, so grid clicks always reach the canvas.
+
+   Two rules the whole sheet obeys:
+     · Gold belongs to the intruder. Nothing the player owns is gold.
+     · Red / yellow / purple are reserved for the telegraph language. Chrome
+       never borrows them, or the tells stop meaning anything.
    ========================================================================== */
 
 :root {
   --w: 1152px;
-  --h: 580px;
+  --h: 672px;
+  /* must match HUD in src/config.js — the wall tucks under one and the
+     foreground lip meets the other */
+  --hud-top: 84px;
+  --hud-bottom: 136px;
 
-  --ink: #0b0912;
-  --panel: #16132340;
-  --panel-solid: #171426;
-  --edge: #3a3457;
-  --edge-hi: #6c5f9c;
+  /* carved stone: the panels are cut from the same rock as the room */
+  --rock: #221d33;
+  --rock-hi: #4b4268;
+  --rock-lo: #100d1c;
+  --void: #07060c;
+  --groove: #171327;
 
-  --text: #e8e4f6;
-  --dim: #9289b8;
+  --brass: #b08d4e;
+  --brass-hi: #e6c184;
+  --brass-lo: #6b5326;
 
+  --text: #ded8f0;
+  --dim: #8d84ab;
+  --faint: #5d566f;
+
+  /* the player's colours: cold arcane, never gold */
   --mana: #4aa8ff;
-  --mana-hi: #9fd4ff;
+  --mana-hi: #a8dcff;
   --essence: #39d4a0;
-  --hp: #ff4d5e;
-  --ult: #ffd23f;
+  --essence-lo: #146b50;
 
+  /* the intruder's colours */
+  --hero: #ffc95c;
+  --hp: #ff4d5e;
+
+  /* telegraph language — reserved */
   --red: #ff3b4e;
   --yellow: #ffd23f;
   --purple: #a855f7;
+
+  --pixel: "Silkscreen", ui-monospace, Consolas, monospace;
+  --read: "Pixelify Sans", ui-monospace, Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -34,9 +58,9 @@
 html, body {
   margin: 0;
   height: 100%;
-  background: #07060c radial-gradient(circle at 50% 30%, #191430 0%, #07060c 70%);
+  background: var(--void) radial-gradient(circle at 50% 30%, #191430 0%, #07060c 70%);
   color: var(--text);
-  font-family: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-family: var(--read);
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -49,9 +73,12 @@ html, body {
   position: relative;
   width: var(--w);
   height: var(--h);
-  border: 2px solid var(--edge);
-  box-shadow: 0 0 0 4px #0b0912, 0 18px 60px #000a;
+  border: 2px solid #2c2544;
+  box-shadow: 0 0 0 4px var(--void), 0 18px 60px #000a;
   overflow: hidden;
+  /* main.js sets --fit so the whole stage always fits the window */
+  transform: scale(var(--fit, 1));
+  transform-origin: center center;
 }
 
 #game canvas {
@@ -63,118 +90,357 @@ html, body {
   position: absolute;
   inset: 0;
   pointer-events: none; /* the canvas must keep receiving grid clicks */
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font-size: 12px;
 }
 
-.label { color: var(--dim); font-size: 9px; letter-spacing: 0.14em; }
+/* ── shared vocabulary ───────────────────────────────────────────────────── */
+
+/* Small caps label. Always says what a number *is*, never what it means. */
+.eyebrow {
+  font-family: var(--pixel);
+  font-size: 7px;
+  letter-spacing: 0.2em;
+  color: var(--faint);
+  line-height: 1;
+}
 .dim { color: var(--dim); }
 
-/* ── generic bars ────────────────────────────────────────────────────────── */
+/* A slab of cut stone. The bevel is two hard 1px lines — no blur, or it stops
+   reading as pixel art at this scale. */
+.slab {
+  background:
+    linear-gradient(#2a2440, var(--rock) 34%, #1b1729);
+  border: 1px solid var(--rock-lo);
+  box-shadow:
+    inset 0 1px 0 var(--rock-hi),
+    inset 0 -1px 0 #0006,
+    inset 1px 0 0 #ffffff10,
+    inset -1px 0 0 #0004;
+}
+
+/* Recessed channel: bars and shard rows sit *in* the stone, not on it. */
 .bar {
   position: relative;
-  height: 8px;
-  background: #241d33;
-  border: 1px solid #0b0912;
-  box-shadow: inset 0 0 0 1px #ffffff0d;
+  height: 9px;
+  background: var(--groove);
+  border: 1px solid var(--rock-lo);
+  box-shadow: inset 0 2px 0 #0009, inset 0 -1px 0 #ffffff0d;
   overflow: hidden;
 }
 .bar .fill {
+  position: relative;
   height: 100%;
   width: 0%;
   transition: width 90ms linear;
 }
-.bar-cap {
+/* the lagging ghost that shows what was just lost */
+.bar .trail {
   position: absolute;
-  right: 3px;
-  top: -1px;
-  font-size: 7px;
-  color: #0008;
-  letter-spacing: 0.18em;
-  font-weight: bold;
+  inset: 0 auto 0 0;
+  height: 100%;
+  width: 0%;
+  background: #ffffff5e;
+  transition: width 420ms ease-out 140ms;
 }
+/* Hard 2px segment cuts, so a bar can be read as a quantity rather than a
+   length. 1px hairlines vanish over a saturated fill. */
+.ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ticks::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat-x;
+  background-image: linear-gradient(90deg, #000000b0 2px, transparent 2px);
+}
+.ticks-4::before { background-size: 25% 100%; }
+.ticks-8::before { background-size: 12.5% 100%; }
 
 /* ── top bar ─────────────────────────────────────────────────────────────── */
 #topbar {
   position: absolute;
   top: 0; left: 0; right: 0;
-  height: 72px;
-  padding: 7px 10px;
+  height: var(--hud-top);
+  padding: 5px 8px;
   display: grid;
-  grid-template-columns: 92px 1fr 118px;
-  gap: 10px;
-  align-items: start;
-  background: linear-gradient(#0b0912f2, #0b0912c0 70%, #0b091200);
-  border-bottom: 1px solid #ffffff0f;
+  grid-template-columns: 112px 452px 1fr 126px;
+  gap: 8px;
+  align-items: stretch;
+  background: linear-gradient(#0b0912fa, #0b0912dd 62%, #0b091200);
 }
 
-#floor-badge {
-  border: 1px solid var(--edge);
-  background: var(--panel);
-  padding: 5px 7px;
-  text-align: center;
-  line-height: 1.15;
+/* ---- floor plaque ---- */
+#floor-plaque {
+  position: relative;
+  padding: 3px 7px 4px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 0 6px;
+  background: linear-gradient(#2a2440, var(--rock) 34%, #1b1729);
+  border: 1px solid var(--rock-lo);
+  box-shadow: inset 0 1px 0 var(--rock-hi), inset 0 -1px 0 #0006;
 }
-#floor-badge .label { display: block; }
-#floor-num { font-size: 22px; font-weight: bold; color: var(--ult); }
-#floor-badge .dim { font-size: 11px; }
+#floor-plaque .eyebrow { grid-column: 1; }
+.plaque-read {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  align-items: baseline;
+  line-height: 0.9;
+}
+#floor-num {
+  font-family: var(--read);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--brass-hi);
+  text-shadow: 0 2px 0 #0009;
+}
+#floor-total { font-size: 12px; }
 
-#hero-block { padding-top: 2px; }
-#hero-line {
+/* one pip per floor of the tower; filled = cleared. An empty pip is a drilled
+   socket — darker than the plaque, with a lit rim — or it disappears into it. */
+.pips { display: flex; gap: 3px; align-items: center; }
+.pip {
+  width: 6px;
+  height: 6px;
+  background: #0c0916;
+  box-shadow: inset 0 1px 0 #0000, 0 0 0 1px #ffffff1f;
+}
+#floor-pips {
+  grid-column: 2;
+  grid-row: 2;
+  justify-content: flex-end;
+}
+#floor-pips .pip.done { background: var(--brass); }
+#floor-pips .pip.here {
+  background: var(--brass-hi);
+  box-shadow: inset 0 0 0 1px #0009, 0 0 0 1px var(--brass-hi), 0 0 6px #e6c18488;
+}
+
+.tries-row {
+  grid-column: 1 / -1;
+  grid-row: 3;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px solid #0007;
+  box-shadow: 0 -1px 0 #ffffff0a inset;
+}
+#lives-pips .pip.left { background: var(--essence); }
+#lives-pips .pip.spent { background: #2a1420; box-shadow: 0 0 0 1px #ffffff12; }
+
+/* ---- intruder dossier ---- */
+#intruder {
+  display: grid;
+  grid-template-columns: 46px 1fr;
   gap: 7px;
+  padding: 3px 8px 4px 4px;
+  background: linear-gradient(90deg, #1c1830e0, #16122480 70%, transparent);
+  border-left: 2px solid var(--brass-lo);
+}
+
+#hero-portrait {
+  position: relative;
+  align-self: center;
+  width: 46px;
+  height: 52px;
+  background: radial-gradient(circle at 50% 40%, #3a2f16, #14101f 70%);
+  border: 1px solid var(--brass-lo);
+  box-shadow: inset 0 0 0 1px #0009, inset 0 1px 0 #ffffff14;
+  overflow: hidden;
+}
+/* 1:1, placed by PlaceholderArt's own anchor. No scaling — a fractional factor
+   would resample the pixels and the helmet would shimmer as the bar redraws. */
+#hero-face {
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  transform: translateX(-50%);
+  image-rendering: pixelated;
+}
+/* the intruder is lit from the same torches as the room */
+#hero-portrait::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 -10px 12px -8px #000, inset 0 8px 10px -8px #ff9a3c40;
+}
+
+#hero-readout { min-width: 0; padding-top: 2px; }
+
+#hero-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   margin-bottom: 4px;
   white-space: nowrap;
+  overflow: hidden;
 }
 #hero-name {
-  font-size: 12px;
-  font-weight: bold;
-  color: #ffe6a8;
-  text-shadow: 0 1px 0 #0009;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--hero);
+  text-shadow: 0 2px 0 #0009;
 }
-#hero-hp-text { margin-left: auto; font-size: 10px; color: var(--dim); }
+#hero-hp-text {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
 
-.hp-bar { height: 11px; }
+/* Status tags. These borrow the telegraph colours on purpose — a purple tag
+   means "the purple thing landed", which is the same sentence as the tell. */
+#hero-tags { display: inline-flex; gap: 3px; }
+.tag {
+  font-family: var(--pixel);
+  font-style: normal;
+  font-size: 7px;
+  padding: 1px 3px;
+  letter-spacing: 0.08em;
+  border: 1px solid currentColor;
+  color: var(--dim);
+}
+.tag.purple { color: var(--purple); }
+.tag.yellow { color: var(--yellow); }
+.tag.red    { color: var(--red); animation: pulse 0.5s steps(2) infinite; }
+
+/* The intruder's health. Deliberately *not* --red: that hue means "AoE landing
+   here" on the battlefield, and a 385px slab of it at the top of the screen
+   would drown the tell. This is a darker woven crimson, hatched so it reads as
+   drawn rather than as a CSS rectangle. */
+.hp-bar { height: 12px; }
 #hero-hp-fill {
   width: 100%;
-  background: linear-gradient(#ff8a94, var(--hp) 45%, #a3162b);
+  background:
+    repeating-linear-gradient(45deg,
+      #c0303f 0 2px, #a8283a 2px 4px);
+  box-shadow:
+    inset 0 1px 0 #ffb8b0,
+    inset 0 -2px 0 #6d1524;
 }
 
-.ult-bar { height: 7px; margin-top: 3px; }
+#hero-lower {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+#ult-block {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 190px;
+}
+.ult-bar { flex: 1; height: 7px; }
 #hero-ult-fill {
   width: 0%;
-  background: linear-gradient(#fff3c0, var(--ult) 50%, #b07d0a);
+  background: linear-gradient(#fff3c0, var(--hero) 50%, #a97a12);
 }
 #hero-ult-fill.ready {
-  animation: ultPulse 0.5s steps(2) infinite;
+  background: linear-gradient(#fff, var(--red) 55%, #8d0d1c);
+  animation: pulse 0.5s steps(2) infinite;
 }
-@keyframes ultPulse {
+@keyframes pulse {
   0%   { filter: brightness(1); }
   100% { filter: brightness(2.1); }
 }
 
-.tag {
-  font-style: normal;
-  font-size: 8px;
-  padding: 1px 4px;
-  border: 1px solid currentColor;
+/* ---- hero skill chips: which patterns are armed right now ---- */
+#hero-skills {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+.skill-chip {
+  position: relative;
+  padding: 2px 5px 2px;
+  font-family: var(--pixel);
+  font-size: 7px;
   letter-spacing: 0.1em;
+  color: var(--faint);
+  background: #14111f;
+  border: 1px solid #2a2440;
+  overflow: hidden;
+  white-space: nowrap;
 }
-.tag.purple { color: var(--purple); }
-.tag.yellow { color: var(--yellow); }
-.tag.red    { color: var(--red); animation: ultPulse 0.5s steps(2) infinite; }
+/* the cooldown drains as a fill behind the label, left to right */
+.skill-chip .cd {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: #2b2340;
+}
+.skill-chip span { position: relative; }
+.skill-chip.armed {
+  color: var(--hero);
+  border-color: var(--brass-lo);
+  background: #241c12;
+  text-shadow: 0 0 6px #ffc95c55;
+}
+/* only while the hero is actually casting it */
+.skill-chip.firing {
+  color: #fff;
+  border-color: var(--red);
+  background: #3a1018;
+  animation: pulse 0.24s steps(2) infinite;
+}
+/* a once-per-floor skill already burned: struck through, not hidden */
+.skill-chip.spent {
+  color: #4a4460;
+  border-color: #201b30;
+  text-decoration: line-through;
+}
 
-#legend {
-  border: 1px solid var(--edge);
-  background: var(--panel);
-  padding: 4px 6px;
-  font-size: 8px;
-  line-height: 1.55;
-  color: var(--dim);
+/* ---- floor inscription ---- */
+/* Carved into the lintel: the room's name, and a rule that runs off toward the
+   legend so the empty span between panels reads as stone rather than as a gap. */
+#floor-title {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 2px;
+  font-family: var(--pixel);
+  font-size: 9px;
+  letter-spacing: 0.34em;
+  color: #6d6490;
+  text-shadow: 0 1px 0 #000;
+  white-space: nowrap;
+  overflow: hidden;
 }
+#floor-title::after {
+  content: "";
+  flex: 1;
+  height: 2px;
+  border-top: 1px solid #0009;
+  border-bottom: 1px solid #ffffff0d;
+}
+
+/* ---- legend ---- */
+#legend {
+  padding: 3px 6px 4px;
+  font-family: var(--pixel);
+  font-size: 7px;
+  line-height: 1.9;
+  color: var(--dim);
+  letter-spacing: 0.04em;
+  background: linear-gradient(#2a2440, var(--rock) 34%, #1b1729);
+  border: 1px solid var(--rock-lo);
+  box-shadow: inset 0 1px 0 var(--rock-hi), inset 0 -1px 0 #0006;
+}
+#legend .eyebrow { display: block; margin-bottom: 2px; }
 .legend-row { display: flex; align-items: center; gap: 5px; }
-.swatch { width: 7px; height: 7px; display: inline-block; }
+.swatch { width: 7px; height: 7px; display: inline-block; box-shadow: 0 0 0 1px #0009; }
 .swatch.red { background: var(--red); }
 .swatch.yellow { background: var(--yellow); }
 .swatch.purple { background: var(--purple); }
@@ -182,123 +448,304 @@ html, body {
 /* ── telegraph callout ───────────────────────────────────────────────────── */
 #callout {
   position: absolute;
-  top: 84px;
+  top: 90px;
   left: 0; right: 0;
   text-align: center;
+  font-family: var(--pixel);
   font-size: 15px;
-  font-weight: bold;
-  letter-spacing: 0.28em;
+  font-weight: 700;
+  letter-spacing: 0.3em;
   opacity: 0;
   transition: opacity 80ms;
   text-shadow: 0 0 10px currentColor, 0 2px 0 #000;
 }
-#callout.show { opacity: 1; animation: calloutBlink 0.22s steps(2) infinite; }
+#callout.show { opacity: 1; animation: blink 0.22s steps(2) infinite; }
 #callout.damage  { color: var(--red); }
 #callout.buff    { color: var(--yellow); }
 #callout.control { color: var(--purple); }
-@keyframes calloutBlink { 0% { opacity: 1; } 100% { opacity: 0.45; } }
+@keyframes blink { 0% { opacity: 1; } 100% { opacity: 0.45; } }
 
 /* ── bottom bar ──────────────────────────────────────────────────────────── */
 #bottombar {
   position: absolute;
   bottom: 0; left: 0; right: 0;
-  height: 120px;
-  padding: 8px 10px;
+  height: var(--hud-bottom);
+  padding: 7px 8px 8px;
   display: grid;
-  grid-template-columns: 138px 1fr;
-  grid-template-rows: auto 1fr;
-  gap: 6px 12px;
-  background: linear-gradient(#0b091200, #0b0912d8 34%, #0b0912fa);
-  border-top: 1px solid #ffffff0f;
+  grid-template-columns: 178px 1fr;
+  grid-template-rows: 1fr auto;
+  gap: 4px 10px;
+  background: linear-gradient(#0b091200, #0b0912e0 30%, #0b0912fc);
 }
 
-#mana-block { grid-row: 1 / span 2; }
-.mana-line {
+/* ---- resources ---- */
+#resources {
+  grid-row: 1 / span 2;
+  padding: 5px 7px 6px;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(#2a2440, var(--rock) 34%, #1b1729);
+  border: 1px solid var(--rock-lo);
+  box-shadow: inset 0 1px 0 var(--rock-hi), inset 0 -1px 0 #0006;
+}
+.res-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   margin-bottom: 3px;
 }
-.essence-line { margin-top: 7px; }
-#mana-text { font-size: 15px; font-weight: bold; color: var(--mana-hi); }
-#essence-text { font-size: 10px; color: var(--essence); }
+.res-head + .res-head { margin-top: 9px; }
+#mana-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--mana-hi);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px #4aa8ff55;
+}
+#essence-text {
+  font-size: 11px;
+  color: var(--essence);
+  font-variant-numeric: tabular-nums;
+}
 
-.mana-bar { height: 13px; }
-#mana-fill { background: linear-gradient(var(--mana-hi), var(--mana) 45%, #12467d); }
+/* The signature element: mana as sockets you can count. A cost of 4 is four
+   shards, and the card's cost pips use the same glyph, so affordability is
+   read by matching shapes rather than comparing numbers.
 
-.essence-bar { height: 6px; }
-#essence-fill { background: linear-gradient(#8bffd8, var(--essence) 60%, #146b50); }
-#essence-fill.low { background: linear-gradient(#ffb08b, #ff5e3a 60%, #7d1f0a); }
+   The glow lives on the rail, not the gems — a per-gem box-shadow blurs a
+   10px hexagon into a round dot and the cut is what makes it a gem. */
+.shards {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 2px;
+  padding: 2px;
+  background: var(--groove);
+  border: 1px solid var(--rock-lo);
+  box-shadow: inset 0 2px 0 #0009, inset 0 0 10px #4aa8ff26;
+}
+.shard {
+  height: 14px;
+  background: #14131f;
+  box-shadow: inset 0 0 0 1px #00000080;
+  /* a cut gem, not a rectangle */
+  clip-path: polygon(50% 0, 100% 28%, 100% 72%, 50% 100%, 0 72%, 0 28%);
+  transition: background 110ms linear;
+}
+/* the diagonal break is the facet: it catches light on one side of the cut */
+.shard.full {
+  background: linear-gradient(138deg, #d2ecff 0 34%, var(--mana) 34% 60%, #17548f 60%);
+}
+/* the shard currently filling — regen is continuous, so show the partial.
+   Quantised to thirds rather than tracked smoothly: a gem fills in facets. */
+.shard.c1 { background: linear-gradient(#1b1a2e 72%, #2f6ea8 72%); }
+.shard.c2 { background: linear-gradient(#1b1a2e 48%, #3f88c4 48%); }
+.shard.c3 { background: linear-gradient(#1b1a2e 24%, #4f9fd8 24%); }
+/* flags the exact shards a hovered/selected card would consume */
+.shard.claim {
+  outline: 1px solid var(--essence);
+  outline-offset: -1px;
+}
+
+.essence-bar { height: 7px; }
+#essence-fill { background: linear-gradient(#8bffd8, var(--essence) 55%, var(--essence-lo)); }
+#essence-fill.low {
+  background: linear-gradient(#ffb08b, #ff5e3a 55%, #7d1f0a);
+  animation: pulse 0.7s steps(2) infinite;
+}
+
+#field-count {
+  margin-top: auto;
+  padding-top: 6px;
+  font-size: 11px;
+  color: var(--dim);
+}
+#field-count b {
+  font-size: 15px;
+  color: var(--essence);
+  font-variant-numeric: tabular-nums;
+}
 
 /* ── monster cards ───────────────────────────────────────────────────────── */
 #cards {
   display: flex;
   gap: 6px;
   align-items: stretch;
+  min-width: 0;
 }
 
+/* A bestiary entry: the creature stands in a lit alcove cut into the card, its
+   numbers inscribed beside it. The art is doubled so a 36px creature reads at
+   card scale instead of hiding in the corner of a wide niche. */
 .card {
   pointer-events: auto;      /* the one place clicks are captured */
   position: relative;
   flex: 1 1 0;
   min-width: 0;
-  padding: 5px 6px 6px;
-  background: #1b1730;
+  padding: 4px 5px 5px;
+  display: grid;
+  /* 76px fits the widest unit (the golem, 36px) doubled, with 2px of air each
+     side. The frame's transparent padding overhangs and is clipped away. */
+  grid-template-columns: 76px 1fr;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 0 7px;
   color: var(--text);
-  border: 1px solid var(--edge);
-  border-bottom-width: 3px;
   font: inherit;
-  letter-spacing: 0.04em;
   text-align: left;
   cursor: pointer;
-  transition: transform 70ms, border-color 70ms, background 70ms;
+  background: linear-gradient(#2a2440, var(--rock) 34%, #1b1729);
+  border: 1px solid var(--rock-lo);
+  box-shadow: inset 0 1px 0 var(--rock-hi), inset 0 -1px 0 #0006;
+  transition: transform 70ms, box-shadow 70ms, background 70ms;
 }
-.card:hover { transform: translateY(-2px); border-color: var(--edge-hi); }
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 var(--rock-hi), inset 0 -1px 0 #0006, 0 3px 0 #0008;
+}
+.card:focus-visible {
+  outline: 2px solid var(--essence);
+  outline-offset: 1px;
+}
 
+/* hotkey, stamped into the stone rather than floating over it */
 .card .key {
   position: absolute;
-  top: 3px; right: 4px;
-  font-size: 8px;
+  top: 2px; right: 3px;
+  font-family: var(--pixel);
+  font-size: 7px;
+  color: var(--faint);
+  text-shadow: 0 1px 0 #ffffff0f;
+}
+
+/* real baked pixel art, standing in its own lit niche */
+.card .portrait {
+  position: relative;
+  grid-area: 1 / 1 / -1 / 2;
+  min-height: 0;
+  background:
+    /* pooled light on the niche floor */
+    radial-gradient(ellipse 70% 22% at 50% 97%, #ffb35c22, transparent 70%),
+    radial-gradient(ellipse 55% 40% at 50% 99%, #00000099, transparent 70%),
+    /* the arch, lit from above like the wall alcoves in the room */
+    radial-gradient(ellipse 90% 60% at 50% 8%, #37305c, #191426 72%);
+  box-shadow: inset 0 0 0 1px #0009, inset 0 1px 0 #ffffff14;
+  overflow: hidden;
+}
+.card .portrait img {
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  transform: translateX(-50%);
+  image-rendering: pixelated;
+}
+
+.card .cname {
+  grid-column: 2;
+  padding-right: 11px;      /* clear of the hotkey stamp */
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* the role line is tagged with the unit's own colour */
+.card .crole {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--pixel);
+  font-size: 7px;
+  letter-spacing: 0.06em;
   color: var(--dim);
-  border: 1px solid #ffffff1a;
-  padding: 0 2px;
+  white-space: nowrap;
+  overflow: hidden;
 }
-.card .swatch {
-  width: 12px; height: 12px;
-  display: block;
-  margin-bottom: 4px;
-  box-shadow: 0 0 0 1px #0b0912;
+.card .crole .dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  box-shadow: 0 0 0 1px #0009;
 }
-.card .cname { display: block; font-size: 11px; font-weight: bold; }
-.card .crole { display: block; font-size: 8px; color: var(--dim); margin-top: 1px; }
+/* the unit's passive, named. It was hover-only before, which made two cards of
+   the same role look interchangeable. Set in the reading face so it doesn't
+   read as a second role label — and not in brass, which is the intruder's. */
+.card .cpassive {
+  grid-column: 2;
+  grid-row: 3;
+  align-self: center;
+  font-size: 11px;
+  line-height: 1.2;
+  color: #a79ecb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card .cfoot {
+  grid-column: 2;
+  grid-row: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+.card .cstats {
+  font-family: var(--pixel);
+  font-size: 7px;
+  color: var(--faint);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.card .cstats i { font-style: normal; color: var(--dim); }
+
+/* cost drawn in mana shards — same glyph as the resource row */
 .card .cost {
-  display: block;
-  margin-top: 4px;
-  font-size: 9px;
-  color: var(--mana-hi);
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
-.card .cost b { font-size: 13px; }
-.card .cost::after { content: " mana"; font-size: 7px; color: var(--dim); }
+.card .cost .cpip {
+  width: 7px;
+  height: 10px;
+  background: linear-gradient(138deg, #d2ecff 0 34%, var(--mana) 34% 60%, #17548f 60%);
+  clip-path: polygon(50% 0, 100% 28%, 100% 72%, 50% 100%, 0 72%, 0 28%);
+}
 
 .card.selected {
-  background: #2a2450;
-  border-color: var(--essence);
-  box-shadow: 0 0 0 1px var(--essence), 0 0 14px #39d4a055;
+  background: linear-gradient(#33305c, #262148 40%, #1b1833);
+  box-shadow:
+    inset 0 1px 0 #6f63b0,
+    inset 0 0 0 1px var(--essence),
+    0 0 12px #39d4a04d;
 }
-.card.poor { opacity: 0.42; }
-.card.poor .cost { color: var(--red); }
+.card.selected::after {
+  /* a chisel mark pointing up at the field: this one is armed */
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -5px;
+  width: 8px; height: 4px;
+  transform: translateX(-50%);
+  background: var(--essence);
+  clip-path: polygon(50% 0, 0 100%, 100% 100%);
+}
+.card.poor { opacity: 0.46; }
+.card.poor .cost .cpip { background: #4a3350; box-shadow: inset 0 0 0 1px #0006; }
 .card.disabled { pointer-events: none; opacity: 0.3; }
 
 #hint {
   grid-column: 2;
-  font-size: 9px;
-  color: var(--dim);
-  min-height: 12px;
+  font-family: var(--pixel);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  min-height: 11px;
   display: flex;
   align-items: center;
 }
 #hint-text.flash {
-  color: var(--ult);
+  color: var(--essence);
   animation: hintIn 120ms ease-out;
 }
 @keyframes hintIn { from { transform: translateX(-4px); opacity: 0; } }
@@ -310,7 +757,7 @@ body.danger #stage::after {
   inset: 0;
   pointer-events: none;
   box-shadow: inset 0 0 42px #ff3b4e55;
-  animation: calloutBlink 0.9s steps(2) infinite;
+  animation: blink 0.9s steps(2) infinite;
 }
 
 /* ── banner ──────────────────────────────────────────────────────────────── */
@@ -320,19 +767,19 @@ body.danger #stage::after {
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 8px;
-  background: #07060cd0;
-  backdrop-filter: blur(1px);
+  gap: 10px;
+  background: #07060cdb;
   text-align: center;
 }
 #banner.hidden { display: none; }
 
 #banner-title {
   margin: 0;
-  font-size: 30px;
-  letter-spacing: 0.16em;
+  font-family: var(--pixel);
+  font-size: 28px;
+  letter-spacing: 0.2em;
   color: #fff;
-  text-shadow: 0 3px 0 #000, 0 0 22px #ffd23f66;
+  text-shadow: 0 3px 0 #000, 0 0 22px #e6c18466;
 }
 #banner.victory #banner-title { color: #8bffd8; text-shadow: 0 3px 0 #000, 0 0 22px #39d4a077; }
 #banner.defeat  #banner-title { color: #ff8a94; text-shadow: 0 3px 0 #000, 0 0 22px #ff3b4e77; }
@@ -340,25 +787,37 @@ body.danger #stage::after {
 #banner-sub {
   margin: 0;
   max-width: 560px;
-  font-size: 11px;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.75;
   color: var(--dim);
 }
 #banner-sub b { color: var(--text); }
-#banner-sub em { color: var(--ult); font-style: normal; }
+#banner-sub em { color: var(--brass-hi); font-style: normal; }
 
 #banner-btn {
   pointer-events: auto;
   margin-top: 6px;
-  padding: 9px 22px;
-  font: inherit;
-  font-size: 12px;
-  letter-spacing: 0.2em;
-  color: var(--ink);
-  background: linear-gradient(#ffe9a8, var(--ult));
-  border: 2px solid #0b0912;
+  padding: 9px 24px;
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: #1a1206;
+  background: linear-gradient(var(--brass-hi), var(--brass) 55%, #8a6d34);
+  border: 2px solid var(--void);
   border-bottom-width: 4px;
   cursor: pointer;
 }
 #banner-btn:hover { filter: brightness(1.12); transform: translateY(-1px); }
 #banner-btn:active { transform: translateY(1px); border-bottom-width: 2px; }
+#banner-btn:focus-visible { outline: 2px solid var(--essence); outline-offset: 2px; }
+
+/* ── reduced motion: keep every state legible, drop the blinking ─────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  #callout.show { opacity: 1; }
+  #hero-ult-fill.ready { filter: brightness(1.5); }
+}
