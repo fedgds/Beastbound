@@ -26,6 +26,13 @@ class Projectile {
     this.y += this.vy * dt;
     this.life -= dt;
     this.sprite.setPosition(Math.round(this.x), Math.round(this.y));
+    if (this.trailColor) {
+      this.trailClock = (this.trailClock ?? 0) - dt;
+      if (this.trailClock <= 0) {
+        this.trailClock = 0.055;
+        this.scene.fx.trail(this.x, this.y, this.trailColor, Math.atan2(this.vy, this.vx), this.trailLength);
+      }
+    }
 
     for (const target of this.targets()) {
       if (!target.alive || this.hitSet.has(target)) continue;
@@ -72,8 +79,17 @@ export default class CombatSystem {
     if (!target?.alive || !attacker.alive) return 0;
 
     const mult = opts.mult ?? 1;
-    const crit = opts.crit ?? false;
-    const raw = attacker.atk * mult * (crit ? COMBAT.critMultiplier : 1);
+    // Avoidance is checked before any damage; block is a partial mitigation
+    // after crit so a lucky defender can still blunt a huge critical blow.
+    if (!opts.ignoreDodge && Math.random() < target.dodgeChance) {
+      this.scene.fx.popText(target.x, target.y - target.spriteHeight - 7, 'DODGE', 0x8bdcff);
+      this.scene.audio?.playCombat('dodge');
+      return 0;
+    }
+
+    const crit = opts.crit ?? (Math.random() < attacker.critChance);
+    const blocked = !opts.ignoreBlock && Math.random() < target.blockChance;
+    const raw = attacker.atk * mult * (crit ? COMBAT.critMultiplier : 1) * (blocked ? 0.55 : 1);
 
     const dealt = target.takeDamage(raw, {
       crit,
@@ -81,10 +97,16 @@ export default class CombatSystem {
       source: attacker,
     });
 
-    if (opts.knockback) target.knockback(attacker.x, attacker.y, opts.knockback);
-    if (crit) this.scene.fx.impact({ color: COLORS.dmgCrit, shake: 0.005, flash: 0.14, stop: 55 });
+    if (blocked) this.scene.fx.popText(target.x, target.y - target.spriteHeight - 18, 'BLOCK', 0x79d9ff);
 
-    opts.onHit?.(target, dealt, crit);
+    if (opts.knockback) target.knockback(attacker.x, attacker.y, opts.knockback);
+    if (crit) {
+      this.scene.fx.impact({ color: COLORS.dmgCrit, shake: 0.005, flash: 0.14, stop: 55 });
+      this.scene.audio?.playCombat('crit');
+    } else if (blocked) this.scene.audio?.playCombat('block');
+    else this.scene.audio?.playCombat('hit');
+
+    if (dealt > 0) opts.onHit?.(target, dealt, crit);
     return dealt;
   }
 
@@ -108,6 +130,8 @@ export default class CombatSystem {
       pierce: opts.pierce ?? false,
       scaleX: opts.scaleX,
       scaleY: opts.scaleY,
+      trailColor: opts.trailColor,
+      trailLength: opts.trailLength ?? 16,
       targetList: opts.targetList ?? [target],
       onHit: (hit) => opts.onHit?.(hit),
     });
@@ -137,8 +161,11 @@ export default class CombatSystem {
   circleDamage(source, x, y, radius, amount, opts = {}) {
     const victims = this.monstersInCircle(x, y, radius);
     for (const m of victims) {
-      m.takeDamage(amount, { color: opts.color ?? COLORS.tgDamage, source });
-      if (opts.knockback) m.knockback(x, y, opts.knockback);
+      this.strike(source, m, {
+        mult: amount / Math.max(1, source.atk),
+        color: opts.color ?? COLORS.tgDamage,
+        knockback: opts.knockback,
+      });
     }
     return victims;
   }
@@ -146,8 +173,11 @@ export default class CombatSystem {
   coneDamage(source, x, y, facing, radius, arcDeg, amount, opts = {}) {
     const victims = this.monstersInCone(x, y, facing, radius, arcDeg);
     for (const m of victims) {
-      m.takeDamage(amount, { color: opts.color ?? COLORS.tgDamage, source });
-      if (opts.knockback) m.knockback(x, y, opts.knockback);
+      this.strike(source, m, {
+        mult: amount / Math.max(1, source.atk),
+        color: opts.color ?? COLORS.tgDamage,
+        knockback: opts.knockback,
+      });
     }
     return victims;
   }

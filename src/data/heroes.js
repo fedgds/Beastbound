@@ -23,11 +23,16 @@ export const GOLDEN_KNIGHT = {
   id: 'goldenKnight',
   name: 'Golden Knight',
   art: 'knight',
+  basicName: 'Slash',
 
-  hp: 900,
+  // The player can field a crowd now, so the Knight needs time to answer it
+  // with telegraphed AoE rather than disappearing during the opening rush.
+  hp: 1500,
   atk: 22,
   speed: 46,
   hitRadius: 20,
+  visualScale: 1.18,
+  combat: { crit: 0.12, dodge: 0.06, block: 0.18 },
 
   /** Aggro / attack ring, drawn on the battlefield (spec §2.3, §6). */
   aggroRadius: 150,
@@ -36,10 +41,9 @@ export const GOLDEN_KNIGHT = {
   /** Short anticipation on the basic attack — readable but not a full telegraph. */
   basicWindup: 0.12,
 
-  /** Ultimate charge (spec §4.1). */
-  ultEnergyMax: 100,
-  ultEnergyPerSec: 8,
-  ultEnergyPerDamage: 0.35,
+  /** A move is rolled after each of these quiet intervals. */
+  skillInterval: { min: 3.4, max: 5.8 },
+  specialChance: 0.14,
 
   skills: [
     {
@@ -100,6 +104,7 @@ export const GOLDEN_KNIGHT = {
   ultimate: {
     id: 'judgment',
     name: 'Judgment',
+    cooldown: 16,
     priority: 10,
     /** Targets the densest monster cluster so it punishes bunching up. */
     telegraph: {
@@ -116,4 +121,37 @@ export const GOLDEN_KNIGHT = {
   },
 };
 
-export const HEROES = { goldenKnight: GOLDEN_KNIGHT };
+export const ICE_MAGE = {
+  id: 'iceMage',
+  name: 'Ice Mage',
+  art: 'iceMage',
+  basicName: 'Ice Shard',
+  hp: 1550,
+  atk: 18,
+  speed: 38,
+  hitRadius: 18,
+  visualScale: 1.05,
+  combat: { crit: 0.1, dodge: 0.1, block: 0.12 },
+  aggroRadius: 210,
+  basicRange: 290,
+  basicInterval: 0.82,
+  basicWindup: 0.18,
+  basicProjectile: { texture: 'proj_iceShard', speed: 560, slowMult: 0.82, slowSeconds: 1.15 },
+  skillInterval: { min: 3.7, max: 5.4 },
+  specialChance: 0.2,
+  skills: [
+    {
+      id: 'iceWall', name: 'Ice Wall', minFloor: 1, cooldown: 10, priority: 1,
+      telegraph: { kind: TELEGRAPH_KIND.BUFF, shape: 'ring', radius: 74, duration: 0.42, label: 'ICE WALL' },
+      effect: { type: 'iceWall', shield: 165, duration: 4.5 }, recover: 0.35,
+    },
+  ],
+  ultimate: {
+    id: 'blizzard', name: 'Blizzard', cooldown: 12, priority: 8,
+    telegraph: { kind: TELEGRAPH_KIND.DAMAGE, shape: 'circle', radius: 118, duration: 0.65, label: 'BLIZZARD ×3', heavy: true },
+    effect: { type: 'blizzard', storms: 3, radius: 96, duration: 4.4, tick: 0.55, tickMult: 0.34, slowMult: 0.64, slowSeconds: 0.8 },
+    recover: 0.65,
+  },
+};
+
+export const HEROES = { goldenKnight: GOLDEN_KNIGHT, iceMage: ICE_MAGE };

@@ -12,25 +12,26 @@ export const GAME_H = 672;
  * same two numbers — the wall band tucks under `HUD.top` and the foreground lip
  * meets `HUD.bottom`, so a mismatch shows up as a seam.
  */
-export const HUD = { top: 84, bottom: 136 };
+// Trim the chrome slightly to give the battlefield two extra tactical rows.
+export const HUD = { top: 72, bottom: 112 };
 
 /** Back wall band drawn above the floor. Purely scenery — nothing walks here. */
-export const WALL = { y: HUD.top, h: 116 };
-WALL.bottom = WALL.y + WALL.h; // 200
+export const WALL = { y: HUD.top, h: 108 };
+WALL.bottom = WALL.y + WALL.h; // 180
 
-/** The battlefield rect: 20 x 8 slabs, exactly. */
-export const ARENA = { x: 16, y: WALL.bottom, w: 1120, h: 336 };
+/** The battlefield rect: 28 x 10 slabs, exactly — room for flanks and backlines. */
+export const ARENA = { x: 16, y: WALL.bottom, w: 1120, h: 380 };
 ARENA.right = ARENA.x + ARENA.w;
-ARENA.bottom = ARENA.y + ARENA.h; // 536 = GAME_H - HUD.bottom
+ARENA.bottom = ARENA.y + ARENA.h; // 560 = GAME_H - HUD.bottom
 ARENA.cx = ARENA.x + ARENA.w / 2;
 ARENA.cy = ARENA.y + ARENA.h / 2;
 
 /** Central home area the hero patrols while idle. It can still chase anywhere
  * in the arena (see Hero.moveBounds()). */
-export const HERO_ZONE = { x: ARENA.cx - 144, w: 288 };
+export const HERO_ZONE = { x: ARENA.cx - 180, w: 360 };
 
-/** Size of one floor slab, in px. Divides ARENA exactly: 20 cols x 8 rows. */
-export const TILE = { w: 56, h: 42 };
+/** Smaller slabs divide the expanded field exactly: 28 cols x 10 rows. */
+export const TILE = { w: 40, h: 38 };
 
 export const COLORS = {
   // arena
@@ -89,9 +90,11 @@ export const COMBAT = {
 };
 
 export const MANA = {
-  start: 6,
-  max: 12,
-  regenPerSec: 1.0,
+  // Swarm-battle baseline: enough immediate mana to form a real front line,
+  // then a fast but finite refill so a bad placement still has a cost.
+  start: 12,
+  max: 20,
+  regenPerSec: 1.6,
 };
 
 /** Frame durations for the placeholder animations (spec §5: 4-8 frames). */

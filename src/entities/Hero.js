@@ -1,5 +1,5 @@
 /**
- * Hero — the floor boss. Owns stats, ultimate energy, aggro visualisation and
+ * Hero — the floor boss. Owns stats, timed random skills, aggro visualisation and
  * skill cooldowns. Behaviour lives in ai/HeroAI.js; telegraph rendering lives
  * in systems/TelegraphSystem.js.
  */
@@ -18,9 +18,11 @@ export default class Hero extends Entity {
       speed: def.speed * floorCfg.speedMult,
       hitRadius: def.hitRadius,
       isHero: true,
+      visualScale: def.visualScale ?? 1.42,
     });
 
     this.def = def;
+    this.combat = def.combat ?? {};
     this.floorCfg = floorCfg;
     this.barWidth = 0; // hero HP is shown in the HTML overlay instead
     this.deathColor = COLORS.heroBody;
@@ -29,17 +31,12 @@ export default class Hero extends Entity {
     this.basicRange = def.basicRange;
     this.basicCooldown = 0;
 
-    /** Ultimate energy (spec §4.1): fills over time AND from damage taken. */
-    this.energy = 0;
-    this.energyMax = def.ultEnergyMax;
-    this.energyPerSec = def.ultEnergyPerSec * floorCfg.ultRateMult;
-    this.energyPerDamage = def.ultEnergyPerDamage * floorCfg.ultRateMult;
-
     /** Only skills unlocked on this floor (difficulty ramp, spec §2.1). */
     this.skills = def.skills.filter((s) => floorCfg.floor >= s.minFloor);
     this.skillCd = {};
     this.skillUsed = {};
     this.triggerTimers = {};
+    this.nextSkillAt = scene.clock + Phaser.Math.FloatBetween(def.skillInterval.min, def.skillInterval.max);
 
     this.state = HERO_STATE.IDLE;
     this.stateUntil = 0;
@@ -59,25 +56,8 @@ export default class Hero extends Entity {
     this.drawAggro();
   }
 
-  get energyPct() {
-    return this.energy / this.energyMax;
-  }
-
-  get ultReady() {
-    return this.energy >= this.energyMax;
-  }
-
   get isTelegraphing() {
     return this.state === HERO_STATE.TELEGRAPH;
-  }
-
-  addEnergy(amount) {
-    if (!this.alive) return;
-    this.energy = Phaser.Math.Clamp(this.energy + amount, 0, this.energyMax);
-  }
-
-  onDamaged(dealt) {
-    this.addEnergy(dealt * this.energyPerDamage);
   }
 
   skillReady(skill) {
@@ -148,11 +128,6 @@ export default class Hero extends Entity {
       this.aggroGfx.clear();
       this.syncSprite();
       return;
-    }
-    // Energy only builds while something is actually on the field, so the bar
-    // always means "how long until Judgment punishes THIS board".
-    if (this.scene.monsters.some((m) => m.alive)) {
-      this.addEnergy(this.energyPerSec * dt);
     }
     this.stepPhysics(dt, this.moveBounds());
     this.syncSprite();

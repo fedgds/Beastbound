@@ -6,7 +6,7 @@
  * TelegraphSystem, and presentation from UISystem/FxSystem.
  */
 
-import { ARENA } from '../config.js';
+import { ARENA, MANA } from '../config.js';
 import ArenaScenery from '../art/ArenaScenery.js';
 import Hero from '../entities/Hero.js';
 import HeroAI from '../ai/HeroAI.js';
@@ -20,10 +20,11 @@ import SummonSystem from '../systems/SummonSystem.js';
 import TelegraphSystem from '../systems/TelegraphSystem.js';
 import TowerSystem from '../systems/TowerSystem.js';
 import UltimateSystem from '../systems/UltimateSystem.js';
+import AudioSystem from '../systems/AudioSystem.js';
 import UISystem from '../ui/UISystem.js';
 import Economy from '../economy/Economy.js';
 import { HEROES } from '../data/heroes.js';
-import { MONSTER_BY_ID, ROLE_LABEL } from '../data/monsters.js';
+import { MONSTERS, MONSTER_BY_ID, ROLE_LABEL } from '../data/monsters.js';
 import { themeForFloor } from '../data/arenaThemes.js';
 
 const MAX_DT = 1 / 20; // clamp so a tab-out can never teleport the simulation
@@ -38,6 +39,7 @@ export default class GameScene extends Phaser.Scene {
     this.clock = 0;
     this.monsters = [];
     this.hero = null;
+    this.needsMainMenu = true;
 
     this.arenaBounds = {
       x: ARENA.x, y: ARENA.y, right: ARENA.right, bottom: ARENA.bottom,
@@ -49,6 +51,7 @@ export default class GameScene extends Phaser.Scene {
     // order matters: fx first (entities report through it), ui last
     this.economy = new Economy();
     this.fx = new FxSystem(this);
+    this.audio = new AudioSystem();
     this.mana = new ManaSystem(this);
     this.telegraph = new TelegraphSystem(this);
     this.combat = new CombatSystem(this);
@@ -85,15 +88,14 @@ export default class GameScene extends Phaser.Scene {
     this.hero = null;
     this.telegraph.reset();
     this.combat.reset();
+    this.skills.reset();
     this.ultimate.reset();
     this.fx.resetDecals(); // the previous attempt's scorch marks go with it
     document.body.classList.remove('danger');
 
     this.mana.configure(cfg);
-    this.summon.configure(cfg);
     this.summon.reset();
     this.ui.setFloor(cfg);
-    this.ui.buildCards(cfg.unlockedMonsters);
 
     const def = HEROES[cfg.heroId];
     this.hero = new Hero(
@@ -106,27 +108,50 @@ export default class GameScene extends Phaser.Scene {
 
     this.battle.toIntro();
     this.ui.setDefaultHint('Select a monster (or press 1–5), then click anywhere on the battlefield.');
-    this.#showIntroBanner(cfg, def);
+    if (this.needsMainMenu) {
+      this.needsMainMenu = false;
+      this.ui.showMainMenu(() => {
+        this.ui.hideMainMenu();
+        this.#showRosterSelection(cfg, def);
+      });
+    } else {
+      this.#showRosterSelection(cfg, def);
+    }
   }
 
-  #showIntroBanner(cfg, heroDef) {
+  #showRosterSelection(cfg, heroDef) {
+    const defaults = [...cfg.unlockedMonsters];
+    for (const def of MONSTERS) {
+      if (defaults.length >= 5) break;
+      if (!defaults.includes(def.id)) defaults.push(def.id);
+    }
+    this.ui.showRosterSelection(defaults, (roster) => {
+      this.summon.configure({ ...cfg, unlockedMonsters: roster });
+      this.ui.buildCards(roster);
+      this.#showIntroBanner(cfg, heroDef, roster);
+    });
+  }
+
+  #showIntroBanner(cfg, heroDef, rosterIds) {
     const skills = heroDef.skills
       .filter((s) => cfg.floor >= s.minFloor)
       .map((s) => s.name);
-    const roster = cfg.unlockedMonsters
+    const roster = rosterIds
       .map((id) => `<b>${MONSTER_BY_ID[id].short}</b> <span class="dim">(${ROLE_LABEL[MONSTER_BY_ID[id].role]})</span>`)
       .join(' · ');
 
     this.ui.showBanner({
       title: `FLOOR ${cfg.floor} — ${cfg.title.toUpperCase()}`,
       sub: `<em>${heroDef.name}</em> — ${cfg.brief}<br>
-            Kit: Slash · ${skills.join(' · ')} · <em>Judgment</em> (ultimate)<br><br>
+            Kit: ${heroDef.basicName ?? 'Attack'} · ${skills.join(' · ')} · <em>${heroDef.ultimate.name}</em> (rare special)<br><br>
             Roster: ${roster}<br>
-            Essence budget: <b>${cfg.essencePool}</b> · Place monsters freely anywhere on the battlefield<br><br>
-            <span class="dim">Watch the wind-up colours — red AoE, yellow buff, purple control.
-            A telegraphing skill can be cancelled by summoning the Swamp Toad.</span>`,
+            Starting mana: <b>${MANA.start + (cfg.manaBonus ?? 0)}</b>/${MANA.max + (cfg.manaMaxBonus ?? 0)} · Essence budget: <b>${cfg.essencePool}</b><br>
+            Place monsters freely anywhere on the battlefield<br><br>
+            <span class="dim">The boss rolls a move every few seconds. Its special is rare;
+            a telegraphing move can be cancelled by summoning the Swamp Toad.</span>`,
       button: 'BEGIN',
       onAction: () => {
+        this.audio.unlock();
         this.ui.hideBanner();
         this.battle.begin();
       },
@@ -169,7 +194,7 @@ export default class GameScene extends Phaser.Scene {
         : `Out of essence with nothing left alive.<br>
            Attempts remaining: <b>${lives}</b><br><br>
            <span class="dim">Try spending earlier — idle essence still drains, and a
-           Toad held in reserve can delete the ultimate outright.</span>`,
+           Toad held in reserve can cancel a rare special outright.</span>`,
       button: over ? 'NEW RUN' : 'RETRY FLOOR',
       onAction: () => {
         if (over) this.tower.resetRun();

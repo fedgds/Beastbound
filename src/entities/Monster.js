@@ -22,6 +22,7 @@ export default class Monster extends Entity {
 
     this.uid = nextId++;
     this.def = def;
+    this.combat = def.combat ?? {};
     this.role = def.role;
     this.barWidth = 26;
     this.deathColor = Phaser.Display.Color.HexStringToColor(def.tint).color;

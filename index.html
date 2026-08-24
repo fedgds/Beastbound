@@ -54,13 +54,6 @@
           </div>
 
           <div id="hero-lower">
-            <div id="ult-block">
-              <span class="eyebrow">ULT</span>
-              <div class="bar ult-bar">
-                <div id="hero-ult-fill" class="fill"></div>
-                <div class="ticks ticks-4"></div>
-              </div>
-            </div>
             <!-- one chip per unlocked hero skill; UISystem fills these -->
             <div id="hero-skills"></div>
           </div>
@@ -82,7 +75,7 @@
     <!-- ---------- centre banner / telegraph callout ---------- -->
     <div id="callout"></div>
 
-    <div id="banner">
+    <div id="banner" class="hidden">
       <h1 id="banner-title">FLOOR 1</h1>
       <p id="banner-sub">Golden Knight</p>
       <button id="banner-btn" type="button">BEGIN</button>
@@ -94,7 +87,7 @@
       <div id="resources">
         <div class="res-head">
           <span class="eyebrow">MANA</span>
-          <span id="mana-text">6/12</span>
+          <span id="mana-text">12/20</span>
         </div>
         <!-- The signature readout: one socket per mana point, so a summon cost
              is something you count rather than something you calculate. -->
@@ -102,7 +95,7 @@
 
         <div class="res-head">
           <span class="eyebrow">ESSENCE</span>
-          <span id="essence-text">60</span>
+          <span id="essence-text">96</span>
         </div>
         <div class="bar essence-bar">
           <div id="essence-fill" class="fill"></div>
@@ -122,6 +115,25 @@
       </div>
     </footer>
   </div>
+
+  <aside id="monster-inspector" class="hidden" aria-live="polite">
+    <span class="inspect-kicker">MONSTER DOSSIER</span>
+    <strong id="inspect-name"></strong>
+    <span id="inspect-role"></span>
+    <div id="inspect-stats" class="inspect-stats"></div>
+    <p id="inspect-passive"></p>
+    <p id="inspect-active"></p>
+  </aside>
+
+  <section id="main-menu" aria-labelledby="menu-title">
+    <div class="menu-panel">
+      <p class="menu-kicker">PIXEL AUTO-BATTLER</p>
+      <h1 id="menu-title">CLIMB<br><span>THE TOWER</span></h1>
+      <p class="menu-copy">Build a monster squad, bait the knight's attacks, and conquer every floor.</p>
+      <button id="menu-start" type="button">ENTER THE TOWER</button>
+      <p class="menu-tip"><b>HOW TO PLAY</b> Select a monster card, then place it on the arena. Mana recovers over time.</p>
+    </div>
+  </section>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>

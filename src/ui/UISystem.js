@@ -7,14 +7,14 @@
  *
  * It must answer, at a glance and at all times:
  *   how much mana · what I can afford · where I may summon · how dangerous the
- *   hero is right now · how close the ultimate is · which floor I'm on.
+ *   hero is right now · which skills are armed · which floor I'm on.
  *
  * Two readouts here exist because the state was previously invisible: the
  * attempts pips (TowerSystem.lives) and the hero skill chips (Hero.skillCd) —
  * you could lose a run, or eat a Shield Bash, with no warning either was coming.
  */
 
-import { MONSTER_BY_ID, ROLE_LABEL } from '../data/monsters.js';
+import { MONSTERS, MONSTER_BY_ID, ROLE_LABEL } from '../data/monsters.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -75,7 +75,6 @@ export default class UISystem {
       heroHpText: $('hero-hp-text'),
       heroHpFill: $('hero-hp-fill'),
       heroHpTrail: $('hero-hp-trail'),
-      heroUltFill: $('hero-ult-fill'),
       heroSkills: $('hero-skills'),
       manaText: $('mana-text'),
       manaShards: $('mana-shards'),
@@ -89,6 +88,14 @@ export default class UISystem {
       bannerTitle: $('banner-title'),
       bannerSub: $('banner-sub'),
       bannerBtn: $('banner-btn'),
+      inspector: $('monster-inspector'),
+      inspectName: $('inspect-name'),
+      inspectRole: $('inspect-role'),
+      inspectStats: $('inspect-stats'),
+      inspectPassive: $('inspect-passive'),
+      inspectActive: $('inspect-active'),
+      mainMenu: $('main-menu'),
+      menuStart: $('menu-start'),
     };
 
     this.cardEls = new Map();
@@ -96,11 +103,13 @@ export default class UISystem {
     this.skillEls = new Map();
     this.hintTimer = null;
     this.bannerAction = null;
+    this.inspectId = null;
 
     this.#buildPips();
     this.#buildShards();
 
     this.el.bannerBtn.addEventListener('click', () => this.bannerAction?.());
+    this.el.menuStart.addEventListener('click', () => this.menuAction?.());
 
     // Hotkeys 1–5 mirror the card row.
     window.addEventListener('keydown', (e) => this.#onKey(e));
@@ -215,9 +224,8 @@ Passive: ${def.passive.name} — ${def.passive.desc}
 Active:  ${def.active.name} — ${def.active.desc}`;
 
       card.addEventListener('click', () => this.scene.summon.setSelected(id));
-      card.addEventListener('mouseenter', () => this.flashHint(
-        `${def.passive.name}: ${def.passive.desc}`, 2600,
-      ));
+      card.addEventListener('mouseenter', () => this.#inspectMonster(id));
+      card.addEventListener('mouseleave', () => this.#hideInspector());
 
       this.el.cards.appendChild(card);
       this.cardEls.set(id, card);
@@ -250,7 +258,6 @@ Active:  ${def.active.name} — ${def.active.desc}`;
       el.classList.toggle('poor', !mana.canAfford(def.cost));
       el.classList.toggle('disabled', !battle.acceptsInput);
     }
-
     // ── telegraph callout: the loudest thing on screen while winding up ──
     const kind = telegraph.currentKind();
     if (kind) {
@@ -289,8 +296,6 @@ Active:  ${def.active.name} — ${def.active.desc}`;
     // JS state — the easing is the animation.
     this.el.heroHpTrail.style.width = `${pct * 100}%`;
 
-    this.el.heroUltFill.style.width = `${hero.energyPct * 100}%`;
-    this.el.heroUltFill.classList.toggle('ready', hero.ultReady);
     this.#renderHeroTags(hero);
   }
 
@@ -339,8 +344,6 @@ Active:  ${def.active.name} — ${def.active.desc}`;
     if (now < hero.status.slowUntil) tags.push(['SLOWED', 'purple']);
     if (hero.stunned && hero.alive) tags.push(['STUNNED', 'purple']);
     if (hero.enraged) tags.push(['ENRAGED', 'yellow']);
-    if (hero.ultReady) tags.push(['ULT READY', 'red']);
-
     const html = tags.map(([t, c]) => `<i class="tag ${c}">${t}</i>`).join('');
     if (html !== this._tagHtml) {
       this.el.heroTags.innerHTML = html;
@@ -348,13 +351,36 @@ Active:  ${def.active.name} — ${def.active.desc}`;
     }
   }
 
+  #inspectMonster(id) {
+    const def = MONSTER_BY_ID[id];
+    if (!def || this.inspectId === id) return;
+    this.inspectId = id;
+    const pct = (n) => `${Math.round(n * 100)}%`;
+    this.el.inspectName.textContent = def.name.toUpperCase();
+    this.el.inspectRole.textContent = ROLE_LABEL[def.role];
+    this.el.inspectStats.innerHTML = [
+      ['HP', def.hp], ['ATK', def.atk], ['SPD', def.speed], ['RNG', def.range],
+      ['CRIT', pct(def.combat.crit)], ['DODGE', pct(def.combat.dodge)], ['BLOCK', pct(def.combat.block)],
+    ].map(([label, value]) => `<span><i>${label}</i><b>${value}</b></span>`).join('');
+    this.el.inspectPassive.innerHTML = `<b>PASSIVE · ${def.passive.name}</b>${def.passive.desc}`;
+    this.el.inspectActive.innerHTML = `<b>SKILL · ${def.active.name}</b>${def.active.desc}`;
+    this.el.inspector.classList.remove('hidden');
+  }
+
+  #hideInspector() {
+    this.inspectId = null;
+    this.el.inspector.classList.add('hidden');
+  }
+
   // ═══ transient messages ══════════════════════════════════════════════════
   flashHint(text, ms = 1800) {
     this.el.hint.textContent = text;
     this.el.hint.classList.add('flash');
+    this.el.hint.parentElement.classList.add('visible');
     clearTimeout(this.hintTimer);
     this.hintTimer = setTimeout(() => {
       this.el.hint.classList.remove('flash');
+      this.el.hint.parentElement.classList.remove('visible');
       this.el.hint.textContent = this.defaultHint ?? '';
     }, ms);
   }
@@ -377,5 +403,58 @@ Active:  ${def.active.name} — ${def.active.desc}`;
   hideBanner() {
     this.el.banner.className = 'hidden';
     this.bannerAction = null;
+  }
+
+  /** Before every floor, pick exactly five deployable monsters from the roster. */
+  showRosterSelection(defaultIds, onConfirm) {
+    // Start empty: a draft should be an explicit choice, not five hidden
+    // defaults that make the first click look broken.
+    void defaultIds;
+    const chosen = new Set();
+    const sync = () => {
+      const count = chosen.size;
+      this.el.bannerBtn.textContent = `READY · ${count}/5`;
+      this.el.bannerBtn.disabled = count !== 5;
+      this.el.bannerSub.querySelectorAll('[data-roster-id]').forEach((el) => {
+        el.classList.toggle('picked', chosen.has(el.dataset.rosterId));
+      });
+    };
+
+    this.el.bannerTitle.textContent = 'CHOOSE YOUR FIVE';
+    this.el.bannerSub.innerHTML = `<span class="roster-rule">Choose 5 monsters for this floor. Click a selected card to remove it.</span>
+      <div class="roster-picks">${MONSTERS.map((def) => `
+        <button type="button" class="roster-pick" data-roster-id="${def.id}">
+          <span class="roster-art"><img alt="" /></span>
+          <span class="roster-copy"><b>${def.short}</b><em style="color:${def.tint}">${ROLE_LABEL[def.role]}</em>
+          <small>${def.hp} HP · ${def.atk} ATK · ${def.range} RNG</small><strong>${def.active.name}</strong></span>
+        </button>`).join('')}</div>`;
+    this.el.banner.className = 'roster';
+    this.bannerAction = () => {
+      if (chosen.size !== 5) return;
+      onConfirm([...chosen]);
+    };
+    this.el.bannerSub.querySelectorAll('[data-roster-id]').forEach((el) => {
+      const def = MONSTER_BY_ID[el.dataset.rosterId];
+      setPortrait(this.scene, el.querySelector('.roster-art img'), `${def.art}_idle0`, 1);
+      el.addEventListener('click', () => {
+        const { rosterId } = el.dataset;
+        if (chosen.has(rosterId)) chosen.delete(rosterId);
+        else if (chosen.size < 5) chosen.add(rosterId);
+        else this.flashHint('Your squad already has 5 monsters.');
+        sync();
+      });
+    });
+    sync();
+  }
+
+  showMainMenu(onStart) {
+    this.menuAction = onStart;
+    this.el.mainMenu.classList.remove('hidden');
+    this.el.menuStart.focus();
+  }
+
+  hideMainMenu() {
+    this.el.mainMenu.classList.add('hidden');
+    this.menuAction = null;
   }
 }

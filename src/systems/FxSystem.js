@@ -396,6 +396,75 @@ export default class FxSystem {
     this.scene.tweens.add({ targets: g, alpha: 0, duration: 400, onComplete: () => g.destroy() });
   }
 
+  /** A compact, palette-led cast effect for monster abilities. */
+  skillBurst(x, y, color, kind = 'arcane') {
+    const g = this.scene.add.graphics().setDepth(DEPTH.unitFx);
+    const cx = snap(x);
+    const cy = snap(y);
+    const rays = kind === 'explosion' ? 10 : 6;
+    const max = kind === 'explosion' ? 34 : 25;
+    let last = -1;
+    this.scene.tweens.addCounter({
+      from: 0, to: 1, duration: kind === 'explosion' ? 300 : 380,
+      onUpdate: (tw) => {
+        const p = tw.getValue();
+        const step = Math.floor(p * 6);
+        if (step === last) return;
+        last = step;
+        const r = 6 + max * p;
+        g.clear();
+        g.fillStyle(color, (1 - p) * 0.8);
+        if (kind === 'rune') {
+          pxGroundRing(g, cx, cy, r, { dash: 3, gap: 2, rot: step });
+          pxGroundRing(g, cx, cy, Math.max(4, r - 8), { dash: 1, gap: 3, rot: -step });
+        } else {
+          for (let i = 0; i < rays; i++) {
+            const a = (i / rays) * Math.PI * 2 + step * 0.08;
+            pxLine(g, cx + Math.cos(a) * 4, cy + Math.sin(a) * 4,
+              cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+          }
+          pxStar(g, cx, cy, Math.max(P * 2, P * (4 - Math.floor(p * 2))));
+        }
+      },
+      onComplete: () => g.destroy(),
+    });
+  }
+
+  /** Brief afterimage/trail used for arrows, bombs and spectral strikes. */
+  trail(x, y, color, angle = 0, length = 18) {
+    const g = this.scene.add.graphics().setDepth(DEPTH.unitFx);
+    g.fillStyle(color, 0.7);
+    pxLine(g, x, y, x - Math.cos(angle) * length, y - Math.sin(angle) * length);
+    this.scene.tweens.add({ targets: g, alpha: 0, duration: 150, onComplete: () => g.destroy() });
+  }
+
+  /** A faceted temporary ice barricade that reads as both cover and shield. */
+  iceWall(x, y, facing, seconds) {
+    const g = this.scene.add.graphics().setDepth(DEPTH.unitFx);
+    const baseX = snap(x - facing * 20);
+    const baseY = snap(y + 16);
+    const draw = () => {
+      g.clear();
+      g.fillStyle(0x4f91bd, 0.82);
+      g.fillRect(baseX - 20, baseY - 30, 40, 28);
+      g.fillStyle(0x9cecff, 0.9);
+      g.fillTriangle(baseX - 22, baseY - 30, baseX - 12, baseY - 47, baseX - 2, baseY - 30);
+      g.fillTriangle(baseX - 4, baseY - 30, baseX + 5, baseY - 54, baseX + 14, baseY - 30);
+      g.fillStyle(0xe5feff, 0.85);
+      g.fillRect(baseX - 16, baseY - 25, 5, 17);
+      g.fillRect(baseX + 4, baseY - 27, 5, 18);
+      g.fillStyle(0x234d78, 0.7);
+      g.fillRect(baseX - 1, baseY - 28, 3, 26);
+    };
+    draw();
+    this.scene.tweens.add({
+      targets: g, alpha: { from: 1, to: 0.62 }, duration: 320, yoyo: true, repeat: Math.max(0, Math.floor(seconds / 0.64) - 1),
+    });
+    this.scene.time.delayedCall(seconds * 1000, () => {
+      this.scene.tweens.add({ targets: g, alpha: 0, y: g.y - 10, duration: 200, onComplete: () => g.destroy() });
+    });
+  }
+
   destroy() {
     this.flashRect?.destroy();
     this.decals?.destroy();

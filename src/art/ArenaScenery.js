@@ -17,8 +17,8 @@ import {
   P, bakeRadial, dither, ditherRampV, dot, hash2, lighten, px, rng, snap,
 } from './PixelDraw.js';
 
-const COLS = Math.round(ARENA.w / TILE.w); // 20
-const ROWS = Math.round(ARENA.h / TILE.h); // 8
+const COLS = Math.round(ARENA.w / TILE.w); // 28
+const ROWS = Math.round(ARENA.h / TILE.h); // 10
 
 /** The wall is divided into five bays. Pilasters split them, torches centre them. */
 const BAYS = 5;
@@ -49,7 +49,7 @@ const scratch = (scene) => new Phaser.GameObjects.Graphics(scene);
  * just reads as a checkerboard. Row 0 is only slightly dim because the wall
  * already casts a hard shadow across it.
  */
-const ROW_LIGHT = [0.82, 1, 0.96, 0.9, 0.83, 0.75, 0.67, 0.58];
+const ROW_LIGHT = [0.82, 1, 0.97, 0.93, 0.88, 0.82, 0.75, 0.68, 0.61, 0.55];
 
 /** 0xRRGGBB multiply tint for a brightness in 0..1, quantised to 12 steps. */
 function shade(b) {
@@ -157,7 +157,7 @@ export class ArenaScenery {
         shade(0.4 + 0.6 * torchFalloff(x, 165)));
     }
 
-    // ── floor: 20 x 8 flagstones. Variant per cell breaks the grid; tint per
+    // ── floor: 28 x 10 flagstones. Variant per cell breaks the grid; tint per
     // cell puts the room in the torchlight. The floor swings less than the wall
     // — units have to stay readable wherever they stand.
     for (let r = 0; r < ROWS; r++) {

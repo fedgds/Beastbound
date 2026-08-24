@@ -12,7 +12,9 @@ import { COLORS, COMBAT, DEPTH } from '../config.js';
 const LOCKING = new Set(['windup', 'attack', 'hit', 'die']);
 
 export default class Entity {
-  constructor(scene, { art, x, y, hp, atk, speed, hitRadius, isHero = false }) {
+  constructor(scene, {
+    art, x, y, hp, atk, speed, hitRadius, isHero = false, visualScale = 0.78,
+  }) {
     this.scene = scene;
     this.art = art;
     this.isHero = isHero;
@@ -26,9 +28,13 @@ export default class Entity {
     this.baseAtk = atk;
     this.baseSpeed = speed;
     this.hitRadius = hitRadius;
+    // Presentation-only: keep a boss imposing without altering combat math.
+    this.visualScale = visualScale;
 
     this.alive = true;
     this.dying = false;
+    this.iceWallHp = 0;
+    this.iceWallUntil = 0;
 
     this.status = {
       slowUntil: 0,
@@ -46,11 +52,12 @@ export default class Entity {
     this.shadow = scene.add.image(x, y + 2, 'shadow')
       .setDepth(DEPTH.shadow)
       .setAlpha(0.35)
-      .setDisplaySize(hitRadius * 2.4, hitRadius * 1.1);
+      .setDisplaySize(hitRadius * 2.4 * visualScale, hitRadius * 1.1 * visualScale);
 
     this.sprite = scene.add.sprite(x, y, `${art}_idle0`)
       .setDepth(DEPTH.unit)
-      .setOrigin(0.5, 1);
+      .setOrigin(0.5, 1)
+      .setScale(visualScale);
     this.sprite.__entity = this;
 
     this.hpBar = scene.add.graphics().setDepth(DEPTH.hpbar);
@@ -79,6 +86,10 @@ export default class Entity {
     return this.maxHp <= 0 ? 0 : this.hp / this.maxHp;
   }
 
+  get critChance() { return this.combat?.crit ?? 0; }
+  get dodgeChance() { return this.combat?.dodge ?? 0; }
+  get blockChance() { return this.combat?.block ?? 0; }
+
   // ── statuses ─────────────────────────────────────────────────────────────
   applySlow(mult, seconds) {
     const now = this.scene.clock;
@@ -102,7 +113,19 @@ export default class Entity {
   takeDamage(amount, opts = {}) {
     if (!this.alive) return 0;
 
-    const dealt = Math.max(1, Math.round(amount * this.status.drMult));
+    // Ice Wall is a real temporary shield rather than cosmetic cover: it
+    // absorbs damage before mitigation, then collapses cleanly when depleted.
+    let remaining = amount;
+    if (this.iceWallHp > 0 && this.scene.clock < this.iceWallUntil) {
+      const absorbed = Math.min(remaining, this.iceWallHp);
+      this.iceWallHp -= absorbed;
+      remaining -= absorbed;
+      this.scene.fx.popText(this.x, this.y - this.spriteHeight - 18, `ICE WALL ${Math.ceil(this.iceWallHp)}`, 0xa9f5ff);
+      if (this.iceWallHp <= 0) this.setBarrier(false);
+      if (remaining <= 0) return 0;
+    }
+
+    const dealt = Math.max(1, Math.round(remaining * this.status.drMult));
     this.hp = Math.max(0, this.hp - dealt);
 
     const chest = this.y - this.spriteHeight * 0.5;
@@ -218,6 +241,14 @@ export default class Entity {
       this.barrierFx.strokeCircle(0, 0, this.hitRadius + 8);
       this.barrierFx.lineStyle(4, COLORS.shield, 0.25);
       this.barrierFx.strokeCircle(0, 0, this.hitRadius + 8);
+      // Four square runes keep the defensive state readable as a magical stone
+      // ward rather than a plain selection circle.
+      this.barrierFx.fillStyle(0xbff8ff, 0.9);
+      const r = this.hitRadius + 8;
+      for (let i = 0; i < 4; i++) {
+        const a = Math.PI / 4 + i * Math.PI / 2;
+        this.barrierFx.fillRect(Math.round(Math.cos(a) * r) - 2, Math.round(Math.sin(a) * r) - 2, 4, 4);
+      }
       this.scene.tweens.add({
         targets: this.barrierFx,
         alpha: { from: 0.55, to: 1 },

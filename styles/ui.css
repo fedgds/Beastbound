@@ -16,8 +16,8 @@
   --h: 672px;
   /* must match HUD in src/config.js — the wall tucks under one and the
      foreground lip meets the other */
-  --hud-top: 84px;
-  --hud-bottom: 136px;
+  --hud-top: 72px;
+  --hud-bottom: 112px;
 
   /* carved stone: the panels are cut from the same rock as the room */
   --rock: #221d33;
@@ -331,23 +331,7 @@ html, body {
 #hero-lower {
   display: flex;
   align-items: center;
-  gap: 8px;
   margin-top: 4px;
-}
-#ult-block {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex: 0 0 190px;
-}
-.ult-bar { flex: 1; height: 7px; }
-#hero-ult-fill {
-  width: 0%;
-  background: linear-gradient(#fff3c0, var(--hero) 50%, #a97a12);
-}
-#hero-ult-fill.ready {
-  background: linear-gradient(#fff, var(--red) 55%, #8d0d1c);
-  animation: pulse 0.5s steps(2) infinite;
 }
 @keyframes pulse {
   0%   { filter: brightness(1); }
@@ -473,14 +457,16 @@ html, body {
   padding: 7px 8px 8px;
   display: grid;
   grid-template-columns: 178px 1fr;
-  grid-template-rows: 1fr auto;
+  /* Cards own the full bottom bar. Status copy is surfaced as popups instead
+     of consuming a row underneath the roster. */
+  grid-template-rows: 1fr;
   gap: 4px 10px;
   background: linear-gradient(#0b091200, #0b0912e0 30%, #0b0912fc);
 }
 
 /* ---- resources ---- */
 #resources {
-  grid-row: 1 / span 2;
+  grid-row: 1;
   padding: 5px 7px 6px;
   display: flex;
   flex-direction: column;
@@ -735,20 +721,68 @@ html, body {
 .card.disabled { pointer-events: none; opacity: 0.3; }
 
 #hint {
-  grid-column: 2;
+  /* Transient toast: it never reserves roster space. */
+  position: absolute;
+  left: 196px;
+  right: 8px;
+  bottom: calc(var(--hud-bottom) + 5px);
+  min-height: 20px;
+  justify-content: center;
+  align-items: center;
+  padding: 3px 8px;
+  color: var(--mana-hi);
   font-family: var(--pixel);
   font-size: 8px;
   letter-spacing: 0.06em;
-  color: var(--faint);
-  min-height: 11px;
-  display: flex;
-  align-items: center;
+  text-align: center;
+  background: #0b0912df;
+  border: 1px solid #4aa8ff44;
+  box-shadow: 0 2px 0 #0009;
+  display: none;
+  pointer-events: none;
 }
+#hint.visible { display: flex; }
 #hint-text.flash {
   color: var(--essence);
   animation: hintIn 120ms ease-out;
 }
 @keyframes hintIn { from { transform: translateX(-4px); opacity: 0; } }
+
+/* ── monster inspector ─────────────────────────────────────────────────── */
+#monster-inspector {
+  position: absolute;
+  z-index: 12;
+  top: 94px;
+  right: 10px;
+  width: 216px;
+  padding: 8px 9px 9px;
+  pointer-events: none;
+  background: linear-gradient(#292342f2, #151020f2);
+  border: 1px solid var(--rock-hi);
+  box-shadow: inset 0 1px 0 #ffffff1a, 0 4px 0 #0007;
+}
+#monster-inspector.hidden { display: none; }
+.inspect-kicker {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--essence);
+  font-family: var(--pixel);
+  font-size: 7px;
+  letter-spacing: 0.12em;
+}
+#inspect-name { display: block; color: var(--text); font-size: 16px; line-height: 1.05; }
+#inspect-role { color: var(--dim); font-family: var(--pixel); font-size: 7px; }
+.inspect-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+  margin: 7px 0;
+}
+.inspect-stats span { padding: 3px 2px; background: #0d0a17; border: 1px solid #ffffff10; text-align: center; }
+.inspect-stats i { display: block; color: var(--faint); font-family: var(--pixel); font-size: 6px; font-style: normal; }
+.inspect-stats b { color: var(--mana-hi); font-family: var(--pixel); font-size: 8px; font-weight: 400; }
+#monster-inspector p { margin: 5px 0 0; color: var(--dim); font-size: 10px; line-height: 1.22; }
+#monster-inspector p b { display: block; color: var(--brass-hi); font-family: var(--pixel); font-size: 7px; font-weight: 400; }
 
 /* low-resource warning vignette */
 body.danger #stage::after {
@@ -810,6 +844,112 @@ body.danger #stage::after {
 #banner-btn:hover { filter: brightness(1.12); transform: translateY(-1px); }
 #banner-btn:active { transform: translateY(1px); border-bottom-width: 2px; }
 #banner-btn:focus-visible { outline: 2px solid var(--essence); outline-offset: 2px; }
+#banner-btn:disabled { cursor: not-allowed; filter: grayscale(0.8) brightness(0.55); }
+
+/* Squad drafting before a floor: all roster entries are visible, but exactly
+   five can be marked for the current battle. */
+#banner.roster { gap: 12px; }
+#banner.roster #banner-title { font-size: 23px; }
+#banner.roster #banner-sub { max-width: 720px; }
+.roster-rule { display: block; margin-bottom: 9px; color: var(--dim); }
+.roster-picks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.roster-pick {
+  pointer-events: auto;
+  min-height: 92px;
+  padding: 4px;
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  gap: 5px;
+  color: var(--dim);
+  font-family: var(--read);
+  text-align: left;
+  cursor: pointer;
+  background: linear-gradient(#26203b, #14101f);
+  border: 1px solid var(--rock-lo);
+  box-shadow: inset 0 1px 0 #ffffff12;
+}
+.roster-art { position: relative; overflow: hidden; background: radial-gradient(ellipse at 50% 92%, #000b, transparent 67%), #181326; box-shadow: inset 0 0 0 1px #ffffff12; }
+.roster-art img { position: absolute; left: 50%; transform: translateX(-50%); image-rendering: pixelated; }
+.roster-copy { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.roster-pick b { color: var(--text); font-size: 12px; line-height: 1.05; }
+.roster-pick em { margin-top: 2px; font-family: var(--pixel); font-size: 6px; font-style: normal; }
+.roster-pick small { margin-top: 4px; color: var(--dim); font-family: var(--pixel); font-size: 6px; line-height: 1.35; }
+.roster-pick strong { margin-top: 3px; color: var(--brass-hi); font-family: var(--pixel); font-size: 6px; font-weight: 400; line-height: 1.25; }
+.roster-pick:hover { transform: translateY(-1px); border-color: var(--rock-hi); }
+.roster-pick.picked { border-color: var(--essence); background: linear-gradient(#28494a, #153230); box-shadow: inset 0 0 0 1px #39d4a055, 0 0 9px #39d4a030; }
+.roster-pick.picked b { color: #c7fff0; }
+
+/* ── main menu ─────────────────────────────────────────────────────────── */
+#main-menu {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(ellipse at 50% 38%, #352551aa 0 22%, transparent 57%),
+    linear-gradient(90deg, #07060cf2, #100b1ad4 48%, #07060cf2);
+  text-align: center;
+}
+#main-menu.hidden { display: none; }
+.menu-panel {
+  width: 462px;
+  padding: 28px 46px 24px;
+  border: 2px solid var(--brass-lo);
+  background:
+    linear-gradient(90deg, #0000 49%, #ffffff08 50%, #0000 51%),
+    linear-gradient(#302746, #171225 56%, #0d0a16);
+  box-shadow: inset 0 1px 0 #ffffff26, inset 0 -2px 0 #000b, 0 12px 0 #0008, 0 0 46px #000c;
+}
+.menu-kicker {
+  margin: 0 0 10px;
+  color: var(--essence);
+  font-family: var(--pixel);
+  font-size: 9px;
+  letter-spacing: 0.24em;
+}
+#menu-title {
+  margin: 0;
+  color: var(--brass-hi);
+  font-family: var(--pixel);
+  font-size: 37px;
+  line-height: 1.1;
+  letter-spacing: 0.13em;
+  text-shadow: 0 4px 0 #000, 0 0 18px #e6c18466;
+}
+#menu-title span { color: #fff2c7; }
+.menu-copy {
+  margin: 18px auto;
+  max-width: 320px;
+  color: var(--dim);
+  font-size: 15px;
+  line-height: 1.45;
+}
+#menu-start {
+  pointer-events: auto;
+  padding: 12px 22px 10px;
+  color: #171006;
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  background: linear-gradient(var(--brass-hi), var(--brass) 55%, #8a6d34);
+  border: 2px solid #08060d;
+  border-bottom-width: 5px;
+  cursor: pointer;
+}
+#menu-start:hover { filter: brightness(1.14); transform: translateY(-1px); }
+#menu-start:active { transform: translateY(2px); border-bottom-width: 3px; }
+#menu-start:focus-visible { outline: 2px solid var(--essence); outline-offset: 3px; }
+.menu-tip {
+  margin: 20px 0 0;
+  padding-top: 11px;
+  border-top: 1px solid #ffffff16;
+  color: var(--faint);
+  font-family: var(--pixel);
+  font-size: 8px;
+  line-height: 1.8;
+}
+.menu-tip b { color: var(--essence); font-weight: 400; }
 
 /* ── reduced motion: keep every state legible, drop the blinking ─────────── */
 @media (prefers-reduced-motion: reduce) {
@@ -819,5 +959,4 @@ body.danger #stage::after {
     transition-duration: 0.001ms !important;
   }
   #callout.show { opacity: 1; }
-  #hero-ult-fill.ready { filter: brightness(1.5); }
 }

@@ -13,6 +13,8 @@ import { CHEAPEST_COST } from '../data/monsters.js';
 export default class ManaSystem {
   constructor(scene) {
     this.scene = scene;
+    // Floor modifiers only exist when configure() is called by GameScene.
+    // Keep construction independent so the title screen can always boot.
     this.max = MANA.max;
     this.mana = MANA.start;
     this.regen = MANA.regenPerSec;
@@ -22,8 +24,10 @@ export default class ManaSystem {
   }
 
   configure(floorCfg) {
-    this.max = MANA.max;
-    this.mana = MANA.start;
+    this.max = MANA.max + (floorCfg.manaMaxBonus ?? 0);
+    // Reaching a higher floor starts the new battle with extra ready mana.
+    // It remains capped by this floor's mana well, so costs stay legible.
+    this.mana = Math.min(this.max, MANA.start + (floorCfg.manaBonus ?? 0));
     this.regen = MANA.regenPerSec * floorCfg.manaRegenMult;
     this.pool = floorCfg.essencePool;
     this.poolMax = floorCfg.essencePool;

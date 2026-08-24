@@ -66,20 +66,16 @@ export default class HeroAI {
     const target = this.#pickTarget(hero);
     hero.target = target;
 
-    // 1) ultimate outranks everything
-    if (this.scene.ultimate.ready(hero)) {
-      this.#startUltimate(hero);
-      return;
-    }
-
-    // 2) conditional skills, highest priority first
-    const skill = this.#pickSkill(hero, dt);
+    // A move is selected only on a timed beat. Regular skills are the default;
+    // Judgment is a deliberately rare roll rather than a mana-funded certainty.
+    const skill = this.#pickSkill(hero);
     if (skill) {
-      this.#startSkill(hero, skill);
+      if (skill.id === hero.def.ultimate.id) this.#startUltimate(hero);
+      else this.#startSkill(hero, skill);
       return;
     }
 
-    // 3) basic attack
+    // Basic attacks fill the space between timed skill rolls.
     if (target) {
       hero.facing = target.x >= hero.x ? 1 : -1;
       const dist = hero.distanceTo(target);
@@ -122,50 +118,22 @@ export default class HeroAI {
     return best;
   }
 
-  /** Evaluates each unlocked skill's trigger; returns the highest priority hit. */
-  #pickSkill(hero, dt) {
-    const candidates = [];
+  /** Rolls one action at a time. The special's 14% weight is lower than the
+   * combined normal-skill weight, and its own cooldown prevents streaks. */
+  #pickSkill(hero) {
+    if (this.scene.clock < hero.nextSkillAt) return null;
 
-    for (const skill of hero.skills) {
-      if (!hero.skillReady(skill)) continue;
-      if (this.#triggerMet(hero, skill, dt)) candidates.push(skill);
-    }
+    const cadence = hero.def.skillInterval;
+    hero.nextSkillAt = this.scene.clock + Phaser.Math.FloatBetween(cadence.min, cadence.max);
 
-    if (!candidates.length) return null;
-    candidates.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-    return candidates[0];
-  }
+    if (!this.scene.monsters.some((m) => m.alive)) return null;
 
-  #triggerMet(hero, skill, dt) {
-    const t = skill.trigger;
-    const key = skill.id;
+    const special = hero.def.ultimate;
+    if (hero.skillReady(special) && Math.random() < hero.def.specialChance) return special;
 
-    switch (t.type) {
-      // "a monster has been in my face for N seconds"
-      case 'nearbyFor': {
-        const near = this.#countWithin(hero, t.radius);
-        hero.triggerTimers[key] = near > 0 ? (hero.triggerTimers[key] ?? 0) + dt : 0;
-        return hero.triggerTimers[key] >= t.seconds;
-      }
-
-      // "I'm surrounded" — punishes clustering (spec §4.1)
-      case 'crowd':
-        return this.#countWithin(hero, t.radius) >= t.count;
-
-      case 'hpBelow':
-        return hero.hpPct < t.pct;
-
-      default:
-        return false;
-    }
-  }
-
-  #countWithin(hero, radius) {
-    let n = 0;
-    for (const m of this.scene.monsters) {
-      if (m.alive && hero.distanceTo(m) <= radius) n++;
-    }
-    return n;
+    const regular = hero.skills.filter((skill) => hero.skillReady(skill));
+    if (!regular.length) return null;
+    return Phaser.Utils.Array.GetRandom(regular);
   }
 
   // ═══ skill / ultimate launch ═════════════════════════════════════════════
@@ -178,6 +146,7 @@ export default class HeroAI {
 
     // Ground position is fixed at wind-up time — the telegraph never chases.
     const ctx = { x: hero.x, y: hero.y - 10, facing: hero.facing };
+    if (skill.effect?.type === 'blizzard') ctx.spots = this.#blizzardSpots(skill.effect.storms);
 
     hero.setState(HERO_STATE.TELEGRAPH, tg.duration + 2);
     hero.playFor('windup', tg.duration);
@@ -198,20 +167,19 @@ export default class HeroAI {
     const tg = ult.telegraph;
     const spot = this.scene.ultimate.pickTarget(hero, tg.radius * 0.55);
 
-    // Energy is spent the moment the wind-up starts: interrupting the ultimate
-    // deletes it entirely, which is the biggest payoff for a well-timed Toad.
-    this.scene.ultimate.consume(hero);
+    hero.putOnCd(ult);
 
     hero.pendingSkill = ult;
     hero.pendingRecover = ult.recover;
 
     const ctx = { x: spot.x, y: spot.y, facing: spot.x >= hero.x ? 1 : -1 };
+    if (ult.effect?.type === 'blizzard') ctx.spots = this.#blizzardSpots(ult.effect.storms);
     hero.facing = ctx.facing;
 
     hero.setState(HERO_STATE.TELEGRAPH, tg.duration + 2);
     hero.playFor('windup', tg.duration);
 
-    this.scene.ui?.flashHint('JUDGMENT incoming — spread out or silence it!');
+    this.scene.ui?.flashHint(`RARE ${ult.name.toUpperCase()} — spread out or silence it!`);
 
     this.scene.telegraph.begin({
       ...tg,
@@ -249,15 +217,42 @@ export default class HeroAI {
     hero.basicCooldown = hero.def.basicInterval;
     hero.setState(HERO_STATE.RECOVER, 0.16);
     hero.play('attack', true);
+    this.scene.audio?.playSkill(hero);
 
     if (!target?.alive || hero.distanceTo(target) > hero.basicRange + 14) {
       this.scene.fx.slash(hero.x + hero.facing * 22, hero.y - 26, hero.facing, 0x9fb6d8);
       return;
     }
 
+    if (hero.def.basicProjectile) {
+      const shard = hero.def.basicProjectile;
+      this.scene.combat.fireProjectile(hero, target, {
+        texture: shard.texture,
+        speed: shard.speed,
+        tint: 0xbff8ff,
+        trailColor: 0x91eaff,
+        trailLength: 20,
+        onHit: (hit) => {
+          this.scene.combat.strike(hero, hit, { color: 0x9cecff });
+          hit.applySlow(shard.slowMult, shard.slowSeconds);
+          this.scene.fx.skillBurst(hit.x, hit.y - hit.spriteHeight * 0.5, 0xa9f5ff, 'arcane');
+        },
+      });
+      return;
+    }
+
     this.scene.fx.slash(hero.x + hero.facing * 22, hero.y - 26, hero.facing, COLORS.white);
     this.scene.combat.strike(hero, target, { knockback: 8 });
     this.scene.fx.hitstop(35);
+  }
+
+  /** Three fixed random storm centres: the warning resolves into real terrain. */
+  #blizzardSpots(count = 3) {
+    const b = this.scene.arenaBounds;
+    return Array.from({ length: count }, () => ({
+      x: Phaser.Math.Between(b.x + 110, b.right - 110),
+      y: Phaser.Math.Between(b.y + 85, b.bottom - 55),
+    }));
   }
 
   // ═══ movement ════════════════════════════════════════════════════════════

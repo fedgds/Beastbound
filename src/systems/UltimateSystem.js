@@ -1,9 +1,8 @@
 /**
- * UltimateSystem — spec §4.1.
+ * UltimateSystem — special-target selection.
  *
- * The hero's energy bar fills both over time and from damage taken (both live
- * on Hero). This system decides when the ultimate is allowed to fire and, more
- * importantly, WHERE it lands: on the densest cluster of monsters. That makes
+ * It decides WHERE the rare Judgment lands: on the densest cluster of
+ * monsters. That makes
  * "don't bunch up" a real, learnable rule rather than a random punish.
  */
 
@@ -11,13 +10,6 @@ export default class UltimateSystem {
   constructor(scene) {
     this.scene = scene;
     this.casts = 0;
-  }
-
-  ready(hero) {
-    if (!hero.alive || !hero.ultReady || hero.stunned) return false;
-    // Never burn the ultimate on an empty board — Judgment has to read as a
-    // punish for what the player put down, not as ambient background damage.
-    return this.scene.monsters.some((m) => m.alive);
   }
 
   /**
@@ -52,11 +44,6 @@ export default class UltimateSystem {
       y: Phaser.Math.Clamp(cy, b.y + 30, b.bottom - 20),
       count: best.group.length,
     };
-  }
-
-  consume(hero) {
-    hero.energy = 0;
-    this.casts++;
   }
 
   reset() {
