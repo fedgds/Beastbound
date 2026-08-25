@@ -129,9 +129,46 @@
     <div class="menu-panel">
       <p class="menu-kicker">PIXEL AUTO-BATTLER</p>
       <h1 id="menu-title">CLIMB<br><span>THE TOWER</span></h1>
-      <p class="menu-copy">Build a monster squad, bait the knight's attacks, and conquer every floor.</p>
-      <button id="menu-start" type="button">ENTER THE TOWER</button>
-      <p class="menu-tip"><b>HOW TO PLAY</b> Select a monster card, then place it on the arena. Mana recovers over time.</p>
+      <p class="menu-copy">Build a monster squad, study every boss, and conquer all four floors.</p>
+      <div class="menu-actions">
+        <button id="menu-start" type="button">ENTER THE TOWER</button>
+        <button id="menu-lab" type="button">SKILL LAB</button>
+      </div>
+      <p class="menu-tip"><b>HOW TO PLAY</b> Enter the tower for a run, or open Skill Lab to cast every ability freely.</p>
+    </div>
+  </section>
+
+  <section id="skill-lab" class="hidden" aria-label="Skill testing room">
+    <header class="lab-head">
+      <div>
+        <span class="lab-kicker">CONTROLLED COMBAT CHAMBER</span>
+        <strong>SKILL LAB</strong>
+        <small>Cooldowns disabled · targets recover automatically</small>
+      </div>
+      <div class="lab-head-actions">
+        <button id="lab-reset" type="button">RESET ROOM</button>
+        <button id="lab-exit" type="button">BACK TO TOWER</button>
+      </div>
+    </header>
+
+    <div class="lab-rosters">
+      <div class="lab-roster-block">
+        <span class="lab-label">HEROES</span>
+        <div id="lab-hero-list" class="lab-actor-list"></div>
+      </div>
+      <div class="lab-roster-block monsters">
+        <span class="lab-label">MONSTERS</span>
+        <div id="lab-monster-list" class="lab-actor-list"></div>
+      </div>
+    </div>
+
+    <div class="lab-skill-dock">
+      <div class="lab-selected">
+        <span>TESTING</span>
+        <strong id="lab-active-name">GOLDEN KNIGHT</strong>
+        <small id="lab-instruction">Choose an ability to cast it at the training targets.</small>
+      </div>
+      <div id="lab-skill-buttons" class="lab-skill-buttons"></div>
     </div>
   </section>
 </div>

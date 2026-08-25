@@ -268,50 +268,346 @@ const UNITS = {
   // Baked at 46x68 and rendered 1:1, so the hood, layered robe, snowflake
   // embroidery and faceted staff crystal all have room to read.
   iceMage: {
-    w: 46, h: 68,
-    signature: 'iceMage',
+    w: 46, h: 68, // Giữ nguyên kích thước khung hình
+    signature: 'iceMage_v2_Detailed',
     poseAmp: 1.5,
-    pal: { body: 0x9bc5df, dark: 0x456b91, accent: 0x9ff4ff, line: 0x17263f },
+    pal: { 
+      body: 0x9bc5df, dark: 0x456b91, accent: 0x9ff4ff, line: 0x17263f, 
+      skin: 0xFDEFD3, // Thêm màu da
+      iceWhite: 0xFFFFFF 
+    },
     parts: [
-      // long silver-white hair, hanging behind the shoulders
+      // --- Phần Tóc và Đầu (Thay đổi lớn: Bỏ mũ trùm, lộ mặt) ---
+      // Tóc dài phía sau (giữ nguyên)
       { x: -14, y: -64, w: 6, h: 28, c: 0xe6eef5, tag: 'hair', z: -1 },
       { x: 8, y: -64, w: 6, h: 28, c: 0xe6eef5, tag: 'hair', z: -1 },
-      // dark boots under the hem
+      
+      // Khuôn mặt (thay thế phần mũ trùm cũ)
+      { x: -8, y: -67, w: 16, h: 14, c: 0xFDEFD3, tag: 'head' }, // Da mặt
+      { x: -6, y: -65, w: 12, h: 8, c: 0xe6eef5, tag: 'hair' }, // Tóc mái trước trán
+      { x: -3, y: -62, w: 6, h: 1, c: 0x456b91, tag: 'eyebrow' }, // Lông mày
+      { x: -5, y: -61, w: 3, h: 2, c: 0x17263f, tag: 'eyeL' }, // Mắt trái
+      { x: 2, y: -61, w: 3, h: 2, c: 0x17263f, tag: 'eyeR' }, // Mắt phải
+      { x: -1, y: -58, w: 2, h: 2, c: 0x9bc5df, tag: 'nose' }, // Mũi
+      { x: -2, y: -55, w: 4, h: 1, c: 0x7fa8c9, tag: 'mouth' }, // Miệng
+      { x: -3, y: -69, w: 6, h: 3, c: 0x9ff4ff, tag: 'head_acc' }, // Vương miện băng nhỏ
+
+      // --- Phần Thân và Trang phục (Cập nhật hở cổ chữ V, thêm lông vũ băng) ---
+      // Cổ áo lông vũ băng (thay thế cổ áo kín cũ)
+      { x: -14, y: -57, w: 28, h: 10, c: 0xFFFFFF, tag: 'torso' }, // Lớp lông vũ trắng
+      { x: -10, y: -54, w: 20, h: 12, c: 0xdff2ff, tag: 'torso' }, // Lớp trong cổ áo
+
+      // Thân áo chính (tạo hình chữ V hở ngực)
+      { x: -6, y: -50, w: 12, h: 40, c: 0xc3dcee, tag: 'torso' }, // Tabard giữa (giữ)
+      { x: -15, y: -52, w: 30, h: 16, c: 0x7fa8c9, tag: 'torso' }, // Phần ngực trên
+      { x: -18, y: -38, w: 36, h: 14, c: 0x7fa8c9, tag: 'torso' }, // Phần eo
+      { x: -16, y: -26, w: 32, h: 16, c: 0x6f97b8, tag: 'torso' }, // Hông váy
+      { x: -14, y: -12, w: 28, h: 10, c: 0x6f97b8, tag: 'torso' }, // Gấu váy
+      
+      // Quần bó / Chân váy lót trong
+      { x: -6, y: -15, w: 12, h: 30, c: 0x9bc5df, tag: 'legs_inner' },
+
+      // --- Phần Tay và Vũ khí ---
+      // Tay áo rộng (bell sleeves - giữ nguyên vị trí nhưng điều chỉnh màu)
+      { x: -24, y: -52, w: 13, h: 24, c: 0x7fa8c9, tag: 'armL' },
+      { x: 11, y: -52, w: 13, h: 24, c: 0x7fa8c9, tag: 'armR' },
+      
+      // Cánh tay trái (cầm trượng)
+      { x: -22, y: -50, w: 4, h: 10, c: 0xFDEFD3, tag: 'handL' },
+      // Trượng băng (cao vút bên trái)
+      { x: -27, y: -76, w: 4, h: 68, c: 0x8fa9c4, tag: 'weapon_shaft' }, // Thân trượng
+      { x: -31, y: -82, w: 12, h: 13, c: 0x9ff4ff, tag: 'weapon_crystal' }, // Tinh thể đỉnh trượng
+
+      // Cánh tay phải (phép thuật) - MỚI
+      { x: 14, y: -50, w: 4, h: 10, c: 0xFDEFD3, tag: 'handR' }, // Bàn tay phải
+      { x: 18, y: -56, w: 6, h: 6, c: 0x9ff4ff, tag: 'magic_crystal_R' }, // Tinh thể nhỏ tay phải
+
+      // --- Phần Chân và Giày (Giữ nguyên) ---
       { x: -10, y: -10, w: 8, h: 10, c: 0x2e4763, tag: 'legL' },
       { x: 2, y: -10, w: 8, h: 10, c: 0x2e4763, tag: 'legR' },
-      // robe: flaring hem, main skirt, then the chest layer
-      { x: -18, y: -22, w: 36, h: 14, c: 0x6f97b8, tag: 'torso' },
-      { x: -15, y: -44, w: 30, h: 24, c: 0x7fa8c9, tag: 'torso' },
-      // lighter inner tabard — carries the embroidered snowflake
-      { x: -6, y: -50, w: 12, h: 40, c: 0xc3dcee, tag: 'torso' },
-      { x: -13, y: -56, w: 26, h: 14, c: 0x7fa8c9, tag: 'torso' },
-      // wide bell sleeves
-      { x: -24, y: -52, w: 13, h: 24, c: 0x6f97b8, tag: 'armL' },
-      { x: 11, y: -52, w: 13, h: 24, c: 0x6f97b8, tag: 'armR' },
-      // mantle collar with frost trim
-      { x: -13, y: -58, w: 26, h: 6, c: 0xc3dcee, tag: 'torso' },
-      // raised hood over a shadowed face
-      { x: -13, y: -72, w: 26, h: 18, c: 0x6f97b8, tag: 'head' },
-      { x: -8, y: -68, w: 16, h: 12, c: 0xcfe6f6, tag: 'head' },
-      { x: -5, y: -64, w: 3, h: 2, c: 'accent', tag: 'eye' },
-      { x: 2, y: -64, w: 3, h: 2, c: 'accent', tag: 'eye' },
-      // tall staff: twisted silver shaft under a faceted crystal
-      { x: -27, y: -76, w: 4, h: 68, c: 0x8fa9c4, tag: 'weapon' },
-      { x: -31, y: -82, w: 12, h: 13, c: 'accent', tag: 'weapon' },
     ],
     details: [
-      // sash over the robe seam, with a crystal clasp
-      { x: -14, y: -35, w: 28, h: 2, c: 0x5d86aa },
-      { x: -13, y: -33, w: 26, h: 3, c: 0x456b91 },
-      { x: -3, y: -36, w: 6, h: 5, c: 0x9ff4ff },
-      // hood inner rim and hair sheen
-      { x: -13, y: -72, w: 26, h: 3, c: 0xdff2ff },
-      { x: -13, y: -60, w: 3, h: 20, c: 0xffffff },
-      { x: 10, y: -60, w: 3, h: 20, c: 0xffffff },
-      // crystal facets — tagged to the staff so they stay on the weapon
-      { x: -29, y: -80, w: 3, h: 9, c: 0xffffff, tag: 'weapon' },
-      { x: -24, y: -78, w: 3, h: 7, c: 0xdff7ff, tag: 'weapon' },
-      { x: -26, y: -68, w: 2, h: 6, c: 0xc9dcec, tag: 'weapon' },
+      // --- Chi tiết Trang trí (Thêm pha lê treo và pha lê bay) ---
+      
+      // Dải pha lê treo quanh eo (vị trí thắt lưng cũ)
+      { x: -14, y: -38, w: 28, h: 2, c: 0x9ff4ff, tag: 'waist_crystal_chain' },
+      { x: -3, y: -35, w: 6, h: 12, c: 0x9ff4ff, tag: 'waist_crystal_dangle' }, // Pha lê trung tâm
+
+      // Pha lê treo ở tay áo
+      { x: -22, y: -40, w: 2, h: 8, c: 0x9ff4ff, tag: 'sleeveL_dangle' },
+      { x: -19, y: -35, w: 2, h: 6, c: 0x9ff4ff, tag: 'sleeveL_dangle' },
+      { x: 19, y: -40, w: 2, h: 8, c: 0x9ff4ff, tag: 'sleeveR_dangle' },
+      { x: 22, y: -35, w: 2, h: 6, c: 0x9ff4ff, tag: 'sleeveR_dangle' },
+
+      // Pha lê treo dọc váy (cập nhật theo hình ảnh)
+      { x: -9, y: -24, w: 2, h: 6, c: 0x9ff4ff, tag: 'skirt_dangle' },
+      { x: 7, y: -24, w: 2, h: 6, c: 0x9ff4ff, tag: 'skirt_dangle' },
+      { x: -3, y: -18, w: 6, h: 12, c: 0x9ff4ff, tag: 'skirt_dangle_center' }, // Pha lê lớn giữa váy
+
+      // Họa tiết bông tuyết trên tabard (cập nhật màu sắc)
+      { x: -4, y: -46, w: 8, h: 8, c: 0x9ff4ff, tag: 'snowflake_emblem' },
+
+      // --- Các tinh thể pha lê bay lơ lửng (MỚI - tagged để dễ di chuyển) ---
+      // Cụm bên trái (trên vai trái)
+      { x: -35, y: -60, w: 6, h: 8, c: 0x9ff4ff, tag: 'floating_crystal' },
+      { x: -40, y: -55, w: 4, h: 6, c: 0x9ff4ff, tag: 'floating_crystal' },
+      // Cụm bên phải (trên vai phải và tay phải)
+      { x: 30, y: -60, w: 6, h: 8, c: 0x9ff4ff, tag: 'floating_crystal' },
+      { x: 35, y: -55, w: 4, h: 6, c: 0x9ff4ff, tag: 'floating_crystal' },
+      { x: 25, y: -50, w: 5, h: 5, c: 0x9ff4ff, tag: 'floating_crystal' }, // Gần tay phải
+
+      // --- Chi tiết nhỏ trên trang phục (viền cổ, viền tay) ---
+      // Cập nhật viền cổ áo và viền tay áo bằng màu sáng (accent/iceWhite)
+      { x: -14, y: -57, w: 28, h: 1, c: 0xFFFFFF, tag: 'collar_trim' },
+      { x: -24, y: -52, w: 1, h: 24, c: 0xFFFFFF, tag: 'sleeveL_trim' },
+      { x: 23, y: -52, w: 1, h: 24, c: 0xFFFFFF, tag: 'sleeveR_trim' },
+
+      // --- Chi tiết trên vũ khí (cập nhật theo hình) ---
+      { x: -29, y: -81, w: 8, h: 11, c: 0xFFFFFF, tag: 'weapon_crystal_highlight' }, // Điểm sáng tinh thể
+      { x: -26, y: -70, w: 2, h: 6, c: 0x9ff4ff, tag: 'weapon_handle_acc' }, // Chi tiết tay cầm
+
+      // --- Hiệu ứng phép thuật ở tay phải (MỚI) ---
+      { x: 16, y: -58, w: 10, h: 10, c: 0x9ff4ff, alpha: 0.5, tag: 'magic_swirl_R' }, // Vòng xoáy phép thuật mờ
+    ],
+  },
+
+  // ── Lion Monk (hero) — image/character/hero/3.png
+  // The concept sheet is not a gameplay sprite sheet, so this compact combat
+  // silhouette translates its defining shapes: broad gold mane, bare muscular
+  // torso, crimson sash, wrapped fists, loose dark trousers and ankle wraps.
+  lionMonk: {
+    w: 52, h: 78,
+    signature: 'lionMonk',
+    poseAmp: 1.65,
+    pal: {
+      body: 0xc9823f,
+      dark: 0x493029,
+      accent: 0xffbd52,
+      line: 0x2b1714,
+      skin: 0xd9954d,
+      wrap: 0xd8c3a1,
+    },
+    parts: [
+      // Mane mass sits behind the face and shoulders.
+      { x: -22, y: -78, w: 44, h: 31, c: 0x7c421f, tag: 'mane', z: -2 },
+      { x: -27, y: -72, w: 10, h: 28, c: 0x9c5729, tag: 'mane', z: -2 },
+      { x: 17, y: -72, w: 10, h: 28, c: 0x9c5729, tag: 'mane', z: -2 },
+
+      // Feet, shin wraps and loose martial trousers.
+      { x: -18, y: -6, w: 16, h: 6, c: 'skin', tag: 'legL' },
+      { x: 3, y: -6, w: 16, h: 6, c: 'skin', tag: 'legR' },
+      { x: -16, y: -18, w: 12, h: 13, c: 0x8f2f2b, tag: 'legL' },
+      { x: 5, y: -18, w: 12, h: 13, c: 0x8f2f2b, tag: 'legR' },
+      { x: -18, y: -39, w: 16, h: 23, c: 0x252733, tag: 'legL' },
+      { x: 2, y: -39, w: 16, h: 23, c: 0x252733, tag: 'legR' },
+      { x: -21, y: -46, w: 42, h: 13, c: 0x30323f, tag: 'torso' },
+      { x: -22, y: -48, w: 44, h: 7, c: 0x641f23, tag: 'belt' },
+
+      // Bare torso, shoulders and powerful forearms.
+      { x: -18, y: -67, w: 36, h: 24, c: 'skin', tag: 'torso' },
+      { x: -28, y: -66, w: 12, h: 24, c: 'skin', tag: 'armL' },
+      { x: 16, y: -66, w: 12, h: 24, c: 'skin', tag: 'armR' },
+      { x: -30, y: -48, w: 13, h: 18, c: 'wrap', tag: 'armL' },
+      { x: 17, y: -48, w: 13, h: 18, c: 'wrap', tag: 'armR' },
+      { x: -31, y: -35, w: 14, h: 11, c: 0xbda98b, tag: 'armL' },
+      { x: 17, y: -35, w: 14, h: 11, c: 0xbda98b, tag: 'armR' },
+
+      // Lion face, muzzle and ears framed by the mane.
+      { x: -15, y: -88, w: 30, h: 23, c: 'skin', tag: 'head' },
+      { x: -18, y: -88, w: 9, h: 9, c: 0x9c5729, tag: 'head' },
+      { x: 9, y: -88, w: 9, h: 9, c: 0x9c5729, tag: 'head' },
+      { x: -10, y: -75, w: 20, h: 12, c: 0xe2a15b, tag: 'head' },
+      { x: -4, y: -71, w: 8, h: 6, c: 0x4b261b, tag: 'head' },
+    ],
+    details: [
+      // Red sash crossing the chest in stepped diagonal segments.
+      { x: -16, y: -68, w: 8, h: 9, c: 0x7b2425, tag: 'torso' },
+      { x: -10, y: -61, w: 8, h: 9, c: 0x7b2425, tag: 'torso' },
+      { x: -4, y: -54, w: 9, h: 9, c: 0x7b2425, tag: 'torso' },
+      { x: 2, y: -48, w: 17, h: 5, c: 0xa73b2e, tag: 'belt' },
+      // Face and bright amber eyes.
+      { x: -9, y: -82, w: 5, h: 3, c: 0x2b1714, tag: 'head' },
+      { x: 4, y: -82, w: 5, h: 3, c: 0x2b1714, tag: 'head' },
+      { x: -8, y: -82, w: 2, h: 2, c: 0xffd76a, tag: 'head' },
+      { x: 6, y: -82, w: 2, h: 2, c: 0xffd76a, tag: 'head' },
+      { x: -7, y: -67, w: 14, h: 2, c: 0x341b17, tag: 'head' },
+      // Wrapped-knuckle bands and red wrist ties.
+      { x: -30, y: -44, w: 13, h: 3, c: 0x8d3029, tag: 'armL' },
+      { x: 17, y: -44, w: 13, h: 3, c: 0x8d3029, tag: 'armR' },
+      { x: -29, y: -38, w: 12, h: 2, c: 0xf0ddbc, tag: 'armL' },
+      { x: 18, y: -38, w: 12, h: 2, c: 0xf0ddbc, tag: 'armR' },
+      // Gold edging on belt and ankle wraps.
+      { x: -22, y: -48, w: 44, h: 2, c: 0xd99a3c, tag: 'belt' },
+      { x: -16, y: -16, w: 12, h: 2, c: 0xd99a3c, tag: 'legL' },
+      { x: 5, y: -16, w: 12, h: 2, c: 0xd99a3c, tag: 'legR' },
+    ],
+  },
+
+  // ── Solar Lion beast form ────────────────────────────────────────────────
+  // A separate quadruped animation set makes Solar Lion Fury a real form
+  // change. It is wider, lower and built around a massive ember mane rather
+  // than reusing the humanoid body under a tint.
+  lionMonkBeast: {
+    w: 78, h: 62,
+    signature: 'solarLionBeast',
+    poseAmp: 1.8,
+    pal: {
+      body: 0xd86c2d,
+      dark: 0x74251f,
+      accent: 0xffd665,
+      line: 0x35151a,
+    },
+    parts: [
+      // Long flaming tail behind the body, built as stepped segments.
+      { x: -47, y: -40, w: 20, h: 8, c: 0x7f2920, tag: 'tail', z: -3 },
+      { x: -54, y: -49, w: 12, h: 10, c: 0xb84323, tag: 'tail', z: -3 },
+      { x: -58, y: -60, w: 10, h: 13, c: 0xf07a2e, tag: 'tail', z: -3 },
+      { x: -60, y: -67, w: 8, h: 10, c: 0xffc34d, tag: 'tail', z: -3 },
+
+      // Rear legs, belly and the long feline torso.
+      { x: -23, y: -27, w: 12, h: 27, c: 0xa63b24, tag: 'legL', z: -1 },
+      { x: -10, y: -23, w: 11, h: 23, c: 0xc55428, tag: 'legR', z: -1 },
+      { x: -29, y: -48, w: 54, h: 27, c: 'body', tag: 'torso' },
+      { x: -25, y: -25, w: 43, h: 12, c: 0xb94826, tag: 'torso' },
+      { x: -27, y: -7, w: 18, h: 7, c: 0x8b2d22, tag: 'legL' },
+      { x: -11, y: -7, w: 17, h: 7, c: 0x9e3622, tag: 'legR' },
+
+      // Forelegs use arm tags so the attack animation drives a real claw swipe.
+      { x: 18, y: -31, w: 12, h: 31, c: 0xc85327, tag: 'armL' },
+      { x: 29, y: -29, w: 13, h: 29, c: 0xe3772f, tag: 'armR' },
+      { x: 16, y: -7, w: 18, h: 7, c: 0x9a3021, tag: 'armL' },
+      { x: 29, y: -7, w: 20, h: 7, c: 0xbd4324, tag: 'armR' },
+
+      // Layered mane plates: dark outer mass, orange middle, sunlit inner rim.
+      { x: 7, y: -66, w: 37, h: 43, c: 0x70211f, tag: 'mane', z: -1 },
+      { x: 13, y: -64, w: 33, h: 38, c: 0xa73722, tag: 'mane', z: -1 },
+      { x: 18, y: -60, w: 28, h: 32, c: 0xe36d2c, tag: 'mane', z: -1 },
+
+      // Side-profile lion head, bright eye and open roaring muzzle.
+      { x: 21, y: -63, w: 29, h: 24, c: 0xe9853c, tag: 'head' },
+      { x: 20, y: -69, w: 11, h: 10, c: 0xa83923, tag: 'head' },
+      { x: 37, y: -51, w: 17, h: 13, c: 0xf1a650, tag: 'head' },
+      { x: 42, y: -46, w: 14, h: 9, c: 0x5b211d, tag: 'head' },
+      { x: 40, y: -38, w: 15, h: 7, c: 0xe87934, tag: 'head' },
+      { x: 44, y: -34, w: 11, h: 5, c: 0x361519, tag: 'head' },
+    ],
+    details: [
+      // Molten dorsal ridge and flame-like body stripes.
+      { x: -23, y: -49, w: 46, h: 3, c: 0xffb746, tag: 'torso' },
+      { x: -17, y: -45, w: 6, h: 15, c: 0x8e2b20, tag: 'torso' },
+      { x: -5, y: -45, w: 6, h: 13, c: 0x9c3020, tag: 'torso' },
+      { x: 7, y: -44, w: 5, h: 12, c: 0x8e2b20, tag: 'torso' },
+      // Brow, sun eye, nose, fangs and tongue inside the roar.
+      { x: 32, y: -58, w: 9, h: 3, c: 0x76221c, tag: 'head' },
+      { x: 35, y: -55, w: 5, h: 4, c: 0xffef9a, tag: 'head' },
+      { x: 37, y: -54, w: 2, h: 2, c: 0xffffff, tag: 'head' },
+      { x: 49, y: -49, w: 7, h: 5, c: 0x2c1317, tag: 'head' },
+      { x: 44, y: -40, w: 4, h: 6, c: 0xffedbd, tag: 'head' },
+      { x: 51, y: -39, w: 4, h: 5, c: 0xffedbd, tag: 'head' },
+      { x: 46, y: -34, w: 8, h: 2, c: 0xe84c30, tag: 'head' },
+      // Hot knuckles and individual white claw tips.
+      { x: 19, y: -8, w: 15, h: 3, c: 0xff9b37, tag: 'armL' },
+      { x: 31, y: -8, w: 18, h: 3, c: 0xffbd4e, tag: 'armR' },
+      { x: 43, y: -5, w: 7, h: 3, c: 0xfff2c4, tag: 'armR' },
+    ],
+  },
+
+  // ── Nightveil Archer (hero) — image/character/hero/4.png
+  // The concept's hood, layered torn cloak, crossed chest straps, violet bow
+  // and ankle smoke are rebuilt as a tall combat silhouette with enough room
+  // for individual buckles, arrow fletching and cloth highlights.
+  nightveilArcher: {
+    w: 70, h: 92,
+    signature: 'nightveilArcher',
+    poseAmp: 1.7,
+    pal: {
+      body: 0x292b3a,
+      dark: 0x171923,
+      accent: 0xa85ae6,
+      line: 0x090b12,
+      cloth: 0x383b4c,
+      leather: 0x4b3b38,
+      steel: 0xb8c1d3,
+    },
+    parts: [
+      // Quiver and arrow shafts sit behind the shoulder and cloak.
+      { x: -23, y: -77, w: 11, h: 39, c: 0x241c22, tag: 'cape', z: -4 },
+      { x: -25, y: -91, w: 3, h: 35, c: 0x888ca1, tag: 'cape', z: -5 },
+      { x: -19, y: -94, w: 3, h: 37, c: 0x9c91ad, tag: 'cape', z: -5 },
+      { x: -13, y: -90, w: 3, h: 31, c: 0x73798d, tag: 'cape', z: -5 },
+      { x: -29, y: -96, w: 9, h: 6, c: 0x6e3aa1, tag: 'cape', z: -5 },
+      { x: -23, y: -99, w: 9, h: 6, c: 0x8c4fc1, tag: 'cape', z: -5 },
+      { x: -17, y: -95, w: 9, h: 6, c: 0x553075, tag: 'cape', z: -5 },
+
+      // Long split cloak, deliberately asymmetric and ragged at the hem.
+      { x: -25, y: -66, w: 50, h: 46, c: 'dark', tag: 'cape', z: -3 },
+      { x: -29, y: -55, w: 16, h: 47, c: 0x20222f, tag: 'cape', z: -3 },
+      { x: 12, y: -57, w: 17, h: 42, c: 0x242633, tag: 'cape', z: -3 },
+      { x: -28, y: -13, w: 10, h: 13, c: 0x171923, tag: 'cape', z: -3 },
+      { x: -16, y: -17, w: 9, h: 17, c: 0x20222f, tag: 'cape', z: -3 },
+      { x: 10, y: -18, w: 10, h: 18, c: 0x20222f, tag: 'cape', z: -3 },
+      { x: 21, y: -11, w: 8, h: 11, c: 0x171923, tag: 'cape', z: -3 },
+
+      // Boots, wrapped shins and fitted assassin trousers.
+      { x: -18, y: -7, w: 16, h: 7, c: 0x11131c, tag: 'legL' },
+      { x: 4, y: -7, w: 17, h: 7, c: 0x11131c, tag: 'legR' },
+      { x: -16, y: -25, w: 12, h: 20, c: 0x252735, tag: 'legL' },
+      { x: 6, y: -25, w: 12, h: 20, c: 0x2e3040, tag: 'legR' },
+      { x: -19, y: -38, w: 17, h: 18, c: 0x20222d, tag: 'legL' },
+      { x: 2, y: -38, w: 18, h: 18, c: 0x292b38, tag: 'legR' },
+
+      // Layered jerkin, shoulder mantle and crossed harness.
+      { x: -20, y: -69, w: 40, h: 36, c: 'body', tag: 'torso' },
+      { x: -16, y: -65, w: 32, h: 27, c: 0x343541, tag: 'torso' },
+      { x: -23, y: -71, w: 46, h: 12, c: 'cloth', tag: 'torso' },
+      { x: -20, y: -43, w: 40, h: 8, c: 0x171923, tag: 'belt' },
+      { x: -5, y: -44, w: 10, h: 10, c: 'leather', tag: 'belt' },
+      { x: -25, y: -67, w: 12, h: 31, c: 0x242632, tag: 'armL' },
+      { x: 13, y: -67, w: 12, h: 31, c: 0x30323f, tag: 'armR' },
+      { x: -27, y: -42, w: 13, h: 10, c: 0x151720, tag: 'armL' },
+      { x: 14, y: -42, w: 13, h: 10, c: 0x181a22, tag: 'armR' },
+
+      // Deep hood, warm face slit and layered mask from the concept sheet.
+      { x: -20, y: -91, w: 40, h: 28, c: 0x151720, tag: 'head' },
+      { x: -16, y: -94, w: 32, h: 14, c: 0x232532, tag: 'head' },
+      { x: -12, y: -83, w: 24, h: 16, c: 0xa75f4d, tag: 'head' },
+      { x: -14, y: -78, w: 28, h: 14, c: 0x20222c, tag: 'head' },
+      { x: -17, y: -69, w: 34, h: 8, c: 0x2e303e, tag: 'head' },
+
+      // Recurve bow: stepped dark limbs around a luminous violet inner stave.
+      { x: 31, y: -87, w: 7, h: 59, c: 0x10121b, tag: 'weapon', z: 1 },
+      { x: 36, y: -91, w: 8, h: 18, c: 0x171923, tag: 'weapon', z: 1 },
+      { x: 36, y: -42, w: 8, h: 18, c: 0x171923, tag: 'weapon', z: 1 },
+      { x: 27, y: -64, w: 9, h: 10, c: 'leather', tag: 'weapon', z: 1 },
+      { x: 28, y: -82, w: 5, h: 23, c: 0x6f369a, tag: 'weapon', z: 2 },
+      { x: 28, y: -55, w: 5, h: 22, c: 0x8d43c0, tag: 'weapon', z: 2 },
+    ],
+    details: [
+      // Crossed harness and silver clasp.
+      { x: -17, y: -68, w: 8, h: 8, c: 'leather', tag: 'torso' },
+      { x: -11, y: -62, w: 8, h: 8, c: 'leather', tag: 'torso' },
+      { x: -5, y: -56, w: 8, h: 8, c: 'leather', tag: 'torso' },
+      { x: 3, y: -68, w: 7, h: 8, c: 0x3a2e31, tag: 'torso' },
+      { x: -2, y: -62, w: 7, h: 8, c: 0x3a2e31, tag: 'torso' },
+      { x: -5, y: -59, w: 10, h: 9, c: 0x8e96aa, tag: 'torso' },
+      { x: -2, y: -57, w: 4, h: 5, c: 0xd9dfed, tag: 'torso' },
+      // One visible amber eye line under the hood and stitched mask ridges.
+      { x: -9, y: -82, w: 7, h: 3, c: 0xf08a68, tag: 'head' },
+      { x: 3, y: -82, w: 7, h: 3, c: 0xc95b54, tag: 'head' },
+      { x: -10, y: -74, w: 20, h: 2, c: 0x444757, tag: 'head' },
+      { x: -8, y: -70, w: 16, h: 2, c: 0x151720, tag: 'head' },
+      // Bracers, knee bands, boot buckles and restrained purple piping.
+      { x: -26, y: -43, w: 12, h: 3, c: 0x595b6a, tag: 'armL' },
+      { x: 15, y: -43, w: 12, h: 3, c: 0x77778a, tag: 'armR' },
+      { x: -16, y: -23, w: 12, h: 3, c: 0x633a79, tag: 'legL' },
+      { x: 6, y: -23, w: 12, h: 3, c: 0x7e4796, tag: 'legR' },
+      { x: -14, y: -6, w: 5, h: 3, c: 0x818596, tag: 'legL' },
+      { x: 8, y: -6, w: 5, h: 3, c: 0x818596, tag: 'legR' },
+      // Bow edge highlights and grip wraps ride the attack pose.
+      { x: 30, y: -83, w: 3, h: 24, c: 0xc06fff, tag: 'weapon' },
+      { x: 30, y: -54, w: 3, h: 22, c: 0x9b50dc, tag: 'weapon' },
+      { x: 27, y: -61, w: 10, h: 3, c: 0xb7bfd0, tag: 'weapon' },
+      { x: 28, y: -58, w: 8, h: 4, c: 0x3c283c, tag: 'weapon' },
     ],
   },
 
@@ -612,6 +908,71 @@ function drawSignature(g, unit, ox, oy, alpha) {
       rect(-4, -33, 8, 2, 0x99d9e7); rect(-2, -29, 4, 2, 0xdffcff);
       rect(-14, -18, 3, 2, 0xe3fbff, .7); rect(11, -18, 3, 2, 0xe3fbff, .7);
       break;
+    case 'nightveilArcher':
+      // Hood planes and cloak folds avoid a flat black silhouette.
+      line(-16, -91, 6, 3, 2, 0x4b4e60, 0.72);
+      line(15, -88, 5, -3, 3, 0x0d0f17, 0.9);
+      line(-21, -61, 8, 3, 5, 0x4a4c5e, 0.48);
+      line(20, -59, 7, -3, 6, 0x11131c, 0.9);
+      line(-12, -51, 7, 2, 5, 0x5a3b62, 0.34);
+      // Taut bowstring and a nocked violet arrow, all grid-snapped.
+      line(40, -88, 14, -1, 4, 0xb9a7cc, 0.72);
+      line(27, -58, 14, 1, 2, 0xb9a7cc, 0.72);
+      line(4, -59, 16, 2, 0, 0xb35cf0, 0.94);
+      rect(34, -61, 8, 4, 0xe5cfff); rect(7, -62, 5, 2, 0xede8f4);
+      // Purple seam light and small metal studs on the harness.
+      rect(-18, -68, 3, 20, 0x713a8d, 0.65);
+      for (let i = 0; i < 5; i++) rect(-10 + i * 5, -43, 2, 2, i % 2 ? 0xb6bdcf : 0x6d7180);
+      // Shadow smoke curls around the boots instead of being baked as a blob.
+      line(-25, -4, 7, -3, -2, 0x7d3dae, 0.42);
+      line(22, -3, 7, 3, -2, 0x9c55d0, 0.38);
+      fleck(-36, -17, 72, 17, 0x8c47bc, 22, 0x4a17, 0.38);
+      break;
+    case 'lionMonk':
+      // Alternating mane locks keep the head from reading as a round helmet.
+      for (let i = 0; i < 7; i++) {
+        const side = i % 2 ? 1 : -1;
+        line(side * (14 + (i % 3) * 2), -83 + i * 5, 4, side * 2, 2,
+          i % 2 ? 0xe4a344 : 0xb86b2d, 0.9);
+      }
+      // Brow, muzzle and tiny fang clusters sharpen the lion expression.
+      line(-10, -84, 4, 2, 1, 0x5a2e1d); line(9, -84, 4, -2, 1, 0x5a2e1d);
+      rect(-4, -72, 8, 3, 0xf0b86e); rect(-5, -68, 3, 3, 0xf4ddaf); rect(2, -68, 3, 3, 0xf4ddaf);
+      // Chest/ab shadows and the gold piping along the stepped red sash.
+      rect(-2, -62, 4, 13, 0x9b5a33, 0.55);
+      rect(-12, -57, 9, 2, 0xf1b75a, 0.8); rect(-6, -50, 9, 2, 0xf1b75a, 0.8);
+      line(-13, -55, 3, 5, 5, 0xe2a14a, 0.85);
+      // Cloth folds and bandage seams from the concept art.
+      line(-17, -36, 5, 2, 5, 0x171923, 0.8); line(15, -36, 5, -2, 5, 0x3f4250, 0.75);
+      for (let i = 0; i < 4; i++) {
+        rect(-28, -42 + i * 4, 10, 2, i % 2 ? 0xa69379 : 0xeee0c5);
+        rect(18, -42 + i * 4, 10, 2, i % 2 ? 0xa69379 : 0xeee0c5);
+      }
+      break;
+    case 'solarLionBeast':
+      // Jagged outer mane locks extend beyond the rectangular construction
+      // layers, producing a fiery silhouette even when the aura is hidden.
+      for (let i = 0; i < 11; i++) {
+        const a = -1.7 + i * 0.3;
+        const sx = 27 + Math.cos(a) * 22;
+        const sy = -47 + Math.sin(a) * 23;
+        line(sx, sy, 4 + (i % 3), Math.cos(a) * 2, Math.sin(a) * 2,
+          i % 3 === 0 ? 0xffc04b : (i % 2 ? 0xf0782d : 0x9f3121), 0.92);
+      }
+      // Ember scales and darker tiger-like flame marks across the flank.
+      fleck(-25, -46, 48, 22, 0xffa13a, 34, 0x5101, 0.74);
+      line(-18, -44, 5, 2, 3, 0x7d241e, 0.9);
+      line(-4, -45, 5, 2, 3, 0x7d241e, 0.85);
+      line(10, -43, 4, 2, 3, 0x7d241e, 0.82);
+      // Bright spine and chest core make the empowered form look internally lit.
+      line(-22, -49, 20, 2, 0, 0xffdf72, 0.72);
+      rampV(18, -57, 23, 24, 0xffc04f, 0.56, 0.05, 1.2, 0.72);
+      rect(34, -55, 4, 3, 0xffffff, 0.9);
+      // Tail sparks and claw glints remain part of every baked animation frame.
+      rect(-59, -67, 4, 4, 0xffffff, 0.82);
+      rect(-55, -62, 5, 3, 0xffdf72, 0.86);
+      rect(44, -5, 7, 2, 0xffffff, 0.9);
+      break;
     case 'iceMage':
       // Robe shading: the outer layer deepens toward the hem, and the flare
       // catches a little cold rim light off the floor.
@@ -727,6 +1088,8 @@ export function buildFxTextures(scene) {
   box('proj_bomb', 9, 9, 0xef522f, 0x42191a);
   box('proj_wraith', 8, 5, 0xcaf7ff, 0x31566d);
   box('proj_iceShard', 14, 4, 0xbff8ff, 0x397aa2);
+  box('proj_solarBolt', 12, 5, 0xffd05c, 0x8a2d1f);
+  box('proj_shadowArrow', 18, 3, 0xd8b8ff, 0x2a1739);
 
   // soft radial blob used for shadows / glows
   g.clear();

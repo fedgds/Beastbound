@@ -23,17 +23,19 @@ export default class Hero extends Entity {
     });
 
     this.def = def;
+    this.normalArt = def.art;
     this.combat = def.combat ?? {};
     this.floorCfg = floorCfg;
     this.barWidth = 0; // hero HP is shown in the HTML overlay instead
     this.deathColor = COLORS.heroBody;
 
     this.aggroRadius = def.aggroRadius;
+    this.baseBasicRange = def.basicRange;
     this.basicRange = def.basicRange;
     this.basicCooldown = 0;
 
-    /** Only skills unlocked on this floor (difficulty ramp, spec §2.1). */
-    this.skills = def.skills.filter((s) => floorCfg.floor >= s.minFloor);
+    /** Every hero brings its complete kit whenever it appears on a floor. */
+    this.skills = [...def.skills];
     this.skillCd = {};
     this.skillUsed = {};
     this.triggerTimers = {};
@@ -46,6 +48,15 @@ export default class Hero extends Entity {
     this.target = null;
     this.taunt = null;
     this.enraged = false;
+    this.felineDodgeUntil = 0;
+    this.felineDodgeBonus = 0;
+    this.shadowDodgeUntil = 0;
+    this.shadowDodgeBonus = 0;
+    this.solarFuryUntil = 0;
+    this.solarTransformed = false;
+    this.solarMoveSpeedMult = 1;
+    this.solarAttackSpeedMult = 1;
+    this.solarBoltMult = 0;
 
     /** How long the hero has held still — Reckless Charge reads this. */
     this.stationaryFor = 0;
@@ -59,6 +70,34 @@ export default class Hero extends Entity {
 
   get isTelegraphing() {
     return this.state === HERO_STATE.TELEGRAPH;
+  }
+
+  get dodgeChance() {
+    const agility = this.scene.clock < this.felineDodgeUntil ? this.felineDodgeBonus : 0;
+    const shadow = this.scene.clock < this.shadowDodgeUntil ? this.shadowDodgeBonus : 0;
+    return Math.min(0.8, super.dodgeChance + agility + shadow);
+  }
+
+  get speed() {
+    const solar = this.solarTransformed && this.scene.clock < this.solarFuryUntil
+      ? this.solarMoveSpeedMult
+      : 1;
+    return super.speed * solar;
+  }
+
+  /** Swap between the humanoid and beast animation sets without replacing the entity. */
+  setCombatForm(art) {
+    if (!art || this.art === art) return;
+    this.art = art;
+    this.animState = '';
+    this.animLockUntil = 0;
+    this.sprite.setAlpha(1).setScale(this.visualScale);
+    this.play('idle', true);
+  }
+
+  resetCombatForm() {
+    this.setCombatForm(this.normalArt);
+    this.sprite.setAlpha(1).setScale(this.visualScale);
   }
 
   skillReady(skill) {

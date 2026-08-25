@@ -925,7 +925,9 @@ body.danger #stage::after {
   font-size: 15px;
   line-height: 1.45;
 }
-#menu-start {
+.menu-actions { display: flex; justify-content: center; gap: 10px; }
+#menu-start,
+#menu-lab {
   pointer-events: auto;
   padding: 12px 22px 10px;
   color: #171006;
@@ -937,9 +939,14 @@ body.danger #stage::after {
   border-bottom-width: 5px;
   cursor: pointer;
 }
-#menu-start:hover { filter: brightness(1.14); transform: translateY(-1px); }
-#menu-start:active { transform: translateY(2px); border-bottom-width: 3px; }
-#menu-start:focus-visible { outline: 2px solid var(--essence); outline-offset: 3px; }
+#menu-lab {
+  color: #efe3ff;
+  background: linear-gradient(#714493, #41295c 55%, #291b3b);
+  border-color: #120b1a;
+}
+#menu-start:hover, #menu-lab:hover { filter: brightness(1.14); transform: translateY(-1px); }
+#menu-start:active, #menu-lab:active { transform: translateY(2px); border-bottom-width: 3px; }
+#menu-start:focus-visible, #menu-lab:focus-visible { outline: 2px solid var(--essence); outline-offset: 3px; }
 .menu-tip {
   margin: 20px 0 0;
   padding-top: 11px;
@@ -950,6 +957,129 @@ body.danger #stage::after {
   line-height: 1.8;
 }
 .menu-tip b { color: var(--essence); font-weight: 400; }
+
+/* ── controlled skill testing room ─────────────────────────────────────── */
+body.lab-mode #topbar,
+body.lab-mode #bottombar,
+body.lab-mode #monster-inspector { display: none; }
+
+#skill-lab {
+  position: absolute;
+  inset: 0;
+  z-index: 16;
+  pointer-events: none;
+  color: var(--text);
+}
+#skill-lab.hidden { display: none; }
+.lab-head {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  min-height: 58px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #765097;
+  background: linear-gradient(90deg, #161020f2, #2b1b3dec 52%, #120d1cf2);
+  box-shadow: inset 0 1px #ffffff1c, 0 5px 16px #000a;
+}
+.lab-head > div:first-child { display: grid; grid-template-columns: auto 1fr; column-gap: 12px; align-items: end; }
+.lab-kicker { grid-column: 1 / 3; color: #b66ce7; font-family: var(--pixel); font-size: 6px; letter-spacing: .22em; }
+.lab-head strong { color: #f0d9ff; font-family: var(--pixel); font-size: 18px; letter-spacing: .15em; }
+.lab-head small { padding-bottom: 2px; color: var(--dim); font-family: var(--read); font-size: 11px; }
+.lab-head-actions { display: flex; gap: 7px; }
+.lab-head button,
+.lab-skill-buttons button,
+.lab-actor {
+  pointer-events: auto;
+  color: #e9dcf4;
+  font-family: var(--pixel);
+  cursor: pointer;
+  background: linear-gradient(#342642, #1b1426);
+  border: 1px solid #6d4b84;
+  border-bottom-width: 3px;
+  box-shadow: inset 0 1px #ffffff16;
+}
+.lab-head button { padding: 8px 10px 6px; font-size: 7px; letter-spacing: .08em; }
+#lab-exit { color: #201707; background: linear-gradient(#eacb83, #aa813d); border-color: #503814; }
+.lab-head button:hover,
+.lab-skill-buttons button:hover,
+.lab-actor:hover { filter: brightness(1.2); transform: translateY(-1px); }
+.lab-head button:active,
+.lab-skill-buttons button:active,
+.lab-actor:active { transform: translateY(1px); border-bottom-width: 1px; }
+
+.lab-rosters {
+  position: absolute;
+  top: 79px;
+  left: 12px;
+  right: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1.65fr;
+  gap: 8px;
+}
+.lab-roster-block {
+  padding: 6px 8px 7px;
+  border: 1px solid #493557aa;
+  background: linear-gradient(90deg, #100c18df, #1d1428c7);
+  box-shadow: 0 4px 12px #0008;
+}
+.lab-label { display: block; margin-bottom: 5px; color: #a866d0; font-family: var(--pixel); font-size: 6px; letter-spacing: .18em; }
+.lab-actor-list { display: flex; gap: 4px; }
+.lab-actor {
+  min-width: 0;
+  flex: 1;
+  height: 31px;
+  padding: 3px 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  overflow: hidden;
+  font-size: 6px;
+  line-height: 1.15;
+  text-align: left;
+}
+.lab-actor img { width: auto; max-width: 23px; max-height: 25px; image-rendering: pixelated; }
+.lab-actor.selected {
+  color: #fff;
+  border-color: #cf83ff;
+  background: linear-gradient(#713c91, #39234e);
+  box-shadow: inset 0 0 0 1px #dfadff55, 0 0 9px #a44bda55;
+}
+
+.lab-skill-dock {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  min-height: 96px;
+  padding: 9px 11px;
+  display: grid;
+  grid-template-columns: 205px 1fr;
+  gap: 10px;
+  border: 1px solid #775196;
+  background: linear-gradient(90deg, #140e1ef5, #241633ee 55%, #100b18f5);
+  box-shadow: inset 0 1px #ffffff18, 0 -5px 18px #000a;
+}
+.lab-selected { display: flex; flex-direction: column; justify-content: center; border-right: 1px solid #ffffff17; }
+.lab-selected span { color: #a866d0; font-family: var(--pixel); font-size: 6px; letter-spacing: .2em; }
+.lab-selected strong { margin-top: 4px; color: #f0d9ff; font-family: var(--pixel); font-size: 11px; letter-spacing: .07em; }
+.lab-selected small { margin-top: 5px; max-width: 185px; color: var(--dim); font-family: var(--read); font-size: 10px; line-height: 1.25; }
+.lab-skill-buttons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; align-content: center; }
+.lab-skill-buttons button {
+  min-height: 52px;
+  padding: 7px 8px 5px;
+  font-size: 7px;
+  line-height: 1.35;
+  text-align: left;
+}
+.lab-skill-buttons button small { display: block; margin-top: 4px; color: #a99db5; font-family: var(--read); font-size: 9px; line-height: 1.15; }
+.lab-skill-buttons button.ultimate { color: #fff0b0; border-color: #b78a3c; background: linear-gradient(#6a492b, #342019); }
+.lab-skill-buttons button.active-skill { color: #dfffe9; border-color: #4c9368; background: linear-gradient(#294b3a, #17291f); }
+.lab-skill-buttons button.passive { color: #d9c6ff; border-color: #6c56a5; }
 
 /* ── reduced motion: keep every state legible, drop the blinking ─────────── */
 @media (prefers-reduced-motion: reduce) {

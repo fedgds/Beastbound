@@ -96,6 +96,15 @@ export default class UISystem {
       inspectActive: $('inspect-active'),
       mainMenu: $('main-menu'),
       menuStart: $('menu-start'),
+      menuLab: $('menu-lab'),
+      skillLab: $('skill-lab'),
+      labHeroList: $('lab-hero-list'),
+      labMonsterList: $('lab-monster-list'),
+      labActiveName: $('lab-active-name'),
+      labInstruction: $('lab-instruction'),
+      labSkillButtons: $('lab-skill-buttons'),
+      labReset: $('lab-reset'),
+      labExit: $('lab-exit'),
     };
 
     this.cardEls = new Map();
@@ -110,6 +119,9 @@ export default class UISystem {
 
     this.el.bannerBtn.addEventListener('click', () => this.bannerAction?.());
     this.el.menuStart.addEventListener('click', () => this.menuAction?.());
+    this.el.menuLab.addEventListener('click', () => this.menuLabAction?.());
+    this.el.labReset.addEventListener('click', () => this.labResetAction?.());
+    this.el.labExit.addEventListener('click', () => this.labExitAction?.());
 
     // Hotkeys 1–5 mirror the card row.
     window.addEventListener('keydown', (e) => this.#onKey(e));
@@ -179,7 +191,7 @@ export default class UISystem {
     this.#buildSkillChips();
   }
 
-  /** A chip per skill unlocked on this floor, so cooldowns are legible. */
+  /** A chip for every skill in the hero's complete kit. */
   #buildSkillChips() {
     const host = this.el.heroSkills;
     host.innerHTML = '';
@@ -344,6 +356,9 @@ Active:  ${def.active.name} — ${def.active.desc}`;
     if (now < hero.status.slowUntil) tags.push(['SLOWED', 'purple']);
     if (hero.stunned && hero.alive) tags.push(['STUNNED', 'purple']);
     if (hero.enraged) tags.push(['ENRAGED', 'yellow']);
+    if (now < hero.solarFuryUntil) tags.push(['SOLAR FURY', 'yellow']);
+    if (now < hero.felineDodgeUntil) tags.push(['AGILITY', 'yellow']);
+    if (now < hero.shadowDodgeUntil) tags.push(['SHADOWSTEP', 'purple']);
     const html = tags.map(([t, c]) => `<i class="tag ${c}">${t}</i>`).join('');
     if (html !== this._tagHtml) {
       this.el.heroTags.innerHTML = html;
@@ -447,8 +462,9 @@ Active:  ${def.active.name} — ${def.active.desc}`;
     sync();
   }
 
-  showMainMenu(onStart) {
+  showMainMenu(onStart, onLab) {
     this.menuAction = onStart;
+    this.menuLabAction = onLab;
     this.el.mainMenu.classList.remove('hidden');
     this.el.menuStart.focus();
   }
@@ -456,5 +472,60 @@ Active:  ${def.active.name} — ${def.active.desc}`;
   hideMainMenu() {
     this.el.mainMenu.classList.add('hidden');
     this.menuAction = null;
+    this.menuLabAction = null;
+  }
+
+  // ═══ skill lab ══════════════════════════════════════════════════════════
+  showSkillLab({ heroes, monsters, onHero, onMonster, onAction, onReset, onExit }) {
+    document.body.classList.add('lab-mode');
+    this.el.skillLab.classList.remove('hidden');
+    this.labAction = onAction;
+    this.labResetAction = onReset;
+    this.labExitAction = onExit;
+
+    this.el.labHeroList.innerHTML = heroes.map((def) => `
+      <button type="button" class="lab-actor" data-lab-kind="hero" data-lab-id="${def.id}">
+        <img alt=""><span>${def.name}</span>
+      </button>`).join('');
+    this.el.labMonsterList.innerHTML = monsters.map((def) => `
+      <button type="button" class="lab-actor" data-lab-kind="monster" data-lab-id="${def.id}">
+        <img alt=""><span>${def.short}</span>
+      </button>`).join('');
+
+    this.el.skillLab.querySelectorAll('[data-lab-kind]').forEach((button) => {
+      const kind = button.dataset.labKind;
+      const def = kind === 'hero'
+        ? heroes.find((h) => h.id === button.dataset.labId)
+        : monsters.find((m) => m.id === button.dataset.labId);
+      if (def) setPortrait(this.scene, button.querySelector('img'), `${def.art}_idle0`, 1);
+      button.addEventListener('click', () => {
+        if (kind === 'hero') onHero(button.dataset.labId);
+        else onMonster(button.dataset.labId);
+      });
+    });
+  }
+
+  setSkillLabSelection(kind, id, name, instruction, actions) {
+    this.el.skillLab.querySelectorAll('[data-lab-kind]').forEach((button) => {
+      button.classList.toggle('selected',
+        button.dataset.labKind === kind && button.dataset.labId === id);
+    });
+    this.el.labActiveName.textContent = name.toUpperCase();
+    this.el.labInstruction.textContent = instruction;
+    this.el.labSkillButtons.innerHTML = actions.map((action) => `
+      <button type="button" class="${action.tone ?? ''}" data-lab-action="${action.id}">
+        ${action.label}<small>${action.desc ?? ''}</small>
+      </button>`).join('');
+    this.el.labSkillButtons.querySelectorAll('[data-lab-action]').forEach((button) => {
+      button.addEventListener('click', () => this.labAction?.(button.dataset.labAction));
+    });
+  }
+
+  hideSkillLab() {
+    document.body.classList.remove('lab-mode');
+    this.el.skillLab.classList.add('hidden');
+    this.labAction = null;
+    this.labResetAction = null;
+    this.labExitAction = null;
   }
 }

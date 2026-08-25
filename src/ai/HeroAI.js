@@ -53,6 +53,14 @@ export default class HeroAI {
     }
   }
 
+  /** Skill Lab hook: resolve the real basic-attack path without waiting for AI. */
+  performBasicNow(hero, target) {
+    if (!hero?.alive || !target?.alive) return;
+    hero.basicTarget = target;
+    hero.facing = target.x >= hero.x ? 1 : -1;
+    this.#resolveBasic(hero);
+  }
+
   #trackStationary(hero, dt) {
     const moved = Math.abs(hero.x - (hero._prevX ?? hero.x)) > 0.4
       || Math.abs(hero.y - (hero._prevY ?? hero.y)) > 0.4;
@@ -180,17 +188,23 @@ export default class HeroAI {
     }
 
     // Ground position is fixed at wind-up time — the telegraph never chases.
-    const ctx = { x: hero.x, y: hero.y - 10, facing: hero.facing };
+    // Targeted regular skills use the same dense-cluster choice as ultimates.
+    const lockedSpot = tg.atTarget
+      ? this.scene.ultimate.pickTarget(hero, (tg.radius ?? 180) * 0.55)
+      : { x: hero.x, y: hero.y - 10 };
+    const ctx = { x: lockedSpot.x, y: lockedSpot.y, facing: hero.facing };
     if (skill.effect?.type === 'blizzard') ctx.spots = this.#blizzardSpots(skill.effect.storms);
 
     hero.setState(HERO_STATE.TELEGRAPH, tg.duration + 2);
     hero.playFor('windup', tg.duration);
 
+    const telegraphSpot = ctx.spots?.[0] ?? ctx;
     this.scene.telegraph.begin({
       ...tg,
       source: hero,
-      x: ctx.x,
-      y: ctx.y,
+      x: telegraphSpot.x,
+      y: telegraphSpot.y,
+      spots: ctx.spots,
       facing: ctx.facing,
       onComplete: () => this.#resolveSkill(hero, skill, ctx),
       onCancel: () => this.#onCancelled(hero, skill),
@@ -200,27 +214,39 @@ export default class HeroAI {
   #startUltimate(hero) {
     const ult = hero.def.ultimate;
     const tg = ult.telegraph;
-    const spot = this.scene.ultimate.pickTarget(hero, tg.radius * 0.55);
+    const spot = tg.atSelf
+      ? { x: hero.x, y: hero.y - 10, count: 0 }
+      : this.scene.ultimate.pickTarget(hero, tg.radius * 0.55);
 
     hero.putOnCd(ult);
 
     hero.pendingSkill = ult;
     hero.pendingRecover = ult.recover;
 
-    const ctx = { x: spot.x, y: spot.y, facing: spot.x >= hero.x ? 1 : -1 };
+    const ctx = {
+      x: spot.x,
+      y: spot.y,
+      facing: tg.atSelf ? hero.facing : (spot.x >= hero.x ? 1 : -1),
+    };
     if (ult.effect?.type === 'blizzard') ctx.spots = this.#blizzardSpots(ult.effect.storms);
     hero.facing = ctx.facing;
 
     hero.setState(HERO_STATE.TELEGRAPH, tg.duration + 2);
     hero.playFor('windup', tg.duration);
 
-    this.scene.ui?.flashHint(`RARE ${ult.name.toUpperCase()} — spread out or silence it!`);
+    this.scene.ui?.flashHint(tg.kind === 'buff'
+      ? `RARE ${ult.name.toUpperCase()} — interrupt it before the power-up!`
+      : `RARE ${ult.name.toUpperCase()} — spread out or silence it!`);
 
+    // Blizzard rolls its storm centres once at wind-up time.  Show those exact
+    // three points now, then resolve the effect at the same stored positions.
+    const telegraphSpot = ctx.spots?.[0] ?? ctx;
     this.scene.telegraph.begin({
       ...tg,
       source: hero,
-      x: ctx.x,
-      y: ctx.y,
+      x: telegraphSpot.x,
+      y: telegraphSpot.y,
+      spots: ctx.spots,
       facing: ctx.facing,
       onComplete: () => this.#resolveSkill(hero, ult, ctx),
       onCancel: () => this.#onCancelled(hero, ult),
@@ -249,7 +275,8 @@ export default class HeroAI {
 
   #resolveBasic(hero) {
     const target = hero.basicTarget;
-    hero.basicCooldown = hero.def.basicInterval;
+    const solar = hero.solarTransformed && this.scene.clock < hero.solarFuryUntil;
+    hero.basicCooldown = hero.def.basicInterval / (solar ? hero.solarAttackSpeedMult : 1);
     hero.setState(HERO_STATE.RECOVER, 0.16);
     hero.play('attack', true);
     this.scene.audio?.playSkill(hero);
@@ -264,15 +291,21 @@ export default class HeroAI {
       this.scene.combat.fireProjectile(hero, target, {
         texture: shard.texture,
         speed: shard.speed,
-        tint: 0xbff8ff,
-        trailColor: 0x91eaff,
-        trailLength: 20,
+        tint: shard.tint ?? 0xbff8ff,
+        trailColor: shard.trailColor ?? 0x91eaff,
+        trailLength: shard.trailLength ?? 20,
         onHit: (hit) => {
-          this.scene.combat.strike(hero, hit, { color: 0x9cecff });
-          hit.applySlow(shard.slowMult, shard.slowSeconds);
-          this.scene.fx.skillBurst(hit.x, hit.y - hit.spriteHeight * 0.5, 0xa9f5ff, 'arcane');
+          this.scene.combat.strike(hero, hit, { color: shard.hitColor ?? 0x9cecff });
+          if (shard.slowMult) hit.applySlow(shard.slowMult, shard.slowSeconds);
+          this.scene.fx.skillBurst(hit.x, hit.y - hit.spriteHeight * 0.5,
+            shard.burstColor ?? 0xa9f5ff, shard.burstKind ?? 'arcane');
         },
       });
+      return;
+    }
+
+    if (solar) {
+      this.scene.skills.performSolarBasic(hero, target);
       return;
     }
 

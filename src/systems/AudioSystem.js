@@ -53,6 +53,16 @@ export default class AudioSystem {
       frostNova: [880, 0.26, 'sine', 0.055, 190],
       glacialLance: [1020, 0.2, 'square', 0.05, 400],
       blizzard: [240, 0.42, 'triangle', 0.06, 720],
+      felineAgility: [360, 0.16, 'sawtooth', 0.04, 920],
+      burningPalm: [170, 0.3, 'sawtooth', 0.065, 680],
+      solarLionFury: [120, 0.52, 'sawtooth', 0.075, 760],
+      solarFinisher: [85, 0.32, 'square', 0.08, 36],
+      shadowstep: [310, 0.18, 'sawtooth', 0.04, 920],
+      venomFang: [760, 0.2, 'square', 0.045, 260],
+      umbralTrap: [190, 0.32, 'triangle', 0.055, 74],
+      eclipseBarrage: [105, 0.48, 'sawtooth', 0.068, 42],
+      eclipseTick: [840, 0.07, 'square', 0.025, 310],
+      eclipseImpact: [82, 0.3, 'sawtooth', 0.075, 34],
       bombard: [118, 0.25, 'sawtooth', 0.07, 48],
       lanceCharge: [145, 0.2, 'sawtooth', 0.06, 72],
       phaseStrike: [690, 0.25, 'sine', 0.05, 310],
@@ -66,6 +76,8 @@ export default class AudioSystem {
       skeletonRider: [160, 0.09, 'triangle', 0.04, 105],
       wraith: [530, 0.12, 'sine', 0.03, 390],
       goldenKnight: [155, 0.1, 'square', 0.045, 112],
+      lionMonk: [210, 0.08, 'triangle', 0.045, 150],
+      nightveilArcher: [610, 0.075, 'square', 0.036, 390],
     };
     const sound = tones[skillId ?? unit?.def?.id]
       ?? (unit?.isHero ? [180, 0.13, 'square', 0.04, 130] : [350, 0.09, 'square', 0.025, 280]);

@@ -85,10 +85,30 @@ export const ARENA_THEMES = {
     /** Number of angled light shafts falling across the floor. */
     shafts: 5,
   },
+
+  /** Floor 4 — an obsidian hunting gallery lit by violet witchfire. */
+  nightveil: {
+    id: 'nightveil',
+    stone3: 0x4c405f,
+    stone2: 0x392e4d,
+    stone1: 0x281f3a,
+    grout: 0x120d1d,
+    wallHi: 0x69547f,
+    wall: 0x463557,
+    wallLo: 0x21182f,
+    metal: 0x716985,
+    accent: 0x8e43bd,
+    flame: 0xd18cff,
+    light: 0x9f58d2,
+    seal: 0x9a55ce,
+    decor: { moss: 1, rubble: 8, crack: 18, stain: 16, grate: 3, chain: 7 },
+    banners: { count: 3, cloth: 0x251a36, trim: 0x9452bd },
+    shafts: 2,
+  },
 };
 
-/** floor number -> theme. Extra floors reuse the spire. */
-const BY_FLOOR = ['gatehouse', 'banners', 'spire'];
+/** floor number -> theme. Extra floors reuse the final gallery. */
+const BY_FLOOR = ['gatehouse', 'banners', 'spire', 'nightveil'];
 
 export function themeForFloor(floor) {
   const key = BY_FLOOR[Math.min(Math.max(floor, 1), BY_FLOOR.length) - 1];

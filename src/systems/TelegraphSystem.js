@@ -44,6 +44,9 @@ export default class TelegraphSystem {
       /** Fixed ground position — telegraphs do NOT chase the player. */
       x: cfg.x,
       y: cfg.y,
+      // Multi-zone skills (Blizzard) roll every centre at wind-up. Keeping
+      // them on one telegraph makes interrupt/cancel resolve atomically.
+      spots: cfg.spots?.length ? cfg.spots : [{ x: cfg.x, y: cfg.y }],
       facing: cfg.facing ?? -1,
       heavy: !!cfg.heavy,
       onComplete: cfg.onComplete,
@@ -119,13 +122,15 @@ export default class TelegraphSystem {
   /** Is a world point inside a live damaging telegraph? */
   isDangerous(x, y) {
     return this.dangerZones().some((t) => {
-      const d = Phaser.Math.Distance.Between(x, y, t.x, t.y);
-      if (d > t.radius) return false;
-      if (t.shape !== 'cone') return true;
-      const half = Phaser.Math.DegToRad(t.arc) / 2;
-      const base = t.facing < 0 ? Math.PI : 0;
-      const a = Math.atan2(y - t.y, x - t.x);
-      return Math.abs(Phaser.Math.Angle.Wrap(a - base)) <= half;
+      return t.spots.some((spot) => {
+        const d = Phaser.Math.Distance.Between(x, y, spot.x, spot.y);
+        if (d > t.radius) return false;
+        if (t.shape !== 'cone') return true;
+        const half = Phaser.Math.DegToRad(t.arc) / 2;
+        const base = t.facing < 0 ? Math.PI : 0;
+        const a = Math.atan2(y - spot.y, x - spot.x);
+        return Math.abs(Phaser.Math.Angle.Wrap(a - base)) <= half;
+      });
     });
   }
 
@@ -181,48 +186,51 @@ export default class TelegraphSystem {
     g.clear();
 
     const pulse = 0.35 + 0.25 * Math.sin(p * Math.PI * 6);
-    const x = snap(tg.x);
-    const y = snap(tg.y);
     const r = tg.radius;
 
-    if (tg.shape === 'cone') {
-      const half = Phaser.Math.DegToRad(tg.arc) / 2;
-      const base = tg.facing < 0 ? Math.PI : 0;
+    for (const spot of tg.spots) {
+      const x = snap(spot.x);
+      const y = snap(spot.y);
 
-      // hatched full extent, then a solid wedge that fills as the cast charges
-      g.fillStyle(tg.color, 0.22);
-      pxCone(g, x, y, r, half, tg.facing, { every: 2 });
-      g.fillStyle(tg.color, 0.4);
-      pxCone(g, x, y, r * p, half, tg.facing);
+      if (tg.shape === 'cone') {
+        const half = Phaser.Math.DegToRad(tg.arc) / 2;
+        const base = tg.facing < 0 ? Math.PI : 0;
 
-      // rim + the two edges, so the exact boundary is unambiguous
-      g.fillStyle(tg.color, Math.min(1, pulse + 0.45));
-      pxArc(g, x, y, r, r, { from: base - half, to: base + half });
-      for (const s of [-1, 1]) {
-        const a = base + s * half;
-        pxLine(g, x, y, x + Math.cos(a) * r, y + Math.sin(a) * r);
-      }
-    } else if (tg.shape === 'ring') {
-      const rr = r * (0.55 + 0.45 * p);
-      g.fillStyle(tg.color, Math.min(1, 0.5 + pulse));
-      pxArc(g, x, y, rr, rr, { dash: 5, gap: 3, rot: p * 4 });
-      g.fillStyle(tg.color, 0.35);
-      pxArc(g, x, y, r, r, { dash: 2, gap: 4 });
-    } else {
-      g.fillStyle(tg.color, 0.16);
-      pxDisc(g, x, y, r, r, { every: 2 });
-      g.fillStyle(tg.color, 0.32);
-      pxDisc(g, x, y, r * p, r * p); // expanding fill = countdown
-      g.fillStyle(tg.color, Math.min(1, 0.55 + pulse * 0.6));
-      pxArc(g, x, y, r, r);
+        // hatched full extent, then a solid wedge that fills as the cast charges
+        g.fillStyle(tg.color, 0.22);
+        pxCone(g, x, y, r, half, tg.facing, { every: 2 });
+        g.fillStyle(tg.color, 0.4);
+        pxCone(g, x, y, r * p, half, tg.facing);
 
-      // crosshair ticks so the centre is unmistakable
-      g.fillStyle(tg.color, 0.85);
-      for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        const r0 = r - 10;
-        pxLine(g,
-          x + Math.cos(a) * r0, y + Math.sin(a) * r0,
-          x + Math.cos(a) * (r + 4), y + Math.sin(a) * (r + 4));
+        // rim + the two edges, so the exact boundary is unambiguous
+        g.fillStyle(tg.color, Math.min(1, pulse + 0.45));
+        pxArc(g, x, y, r, r, { from: base - half, to: base + half });
+        for (const s of [-1, 1]) {
+          const a = base + s * half;
+          pxLine(g, x, y, x + Math.cos(a) * r, y + Math.sin(a) * r);
+        }
+      } else if (tg.shape === 'ring') {
+        const rr = r * (0.55 + 0.45 * p);
+        g.fillStyle(tg.color, Math.min(1, 0.5 + pulse));
+        pxArc(g, x, y, rr, rr, { dash: 5, gap: 3, rot: p * 4 });
+        g.fillStyle(tg.color, 0.35);
+        pxArc(g, x, y, r, r, { dash: 2, gap: 4 });
+      } else {
+        g.fillStyle(tg.color, 0.16);
+        pxDisc(g, x, y, r, r, { every: 2 });
+        g.fillStyle(tg.color, 0.32);
+        pxDisc(g, x, y, r * p, r * p); // expanding fill = countdown
+        g.fillStyle(tg.color, Math.min(1, 0.55 + pulse * 0.6));
+        pxArc(g, x, y, r, r);
+
+        // crosshair ticks so the centre is unmistakable
+        g.fillStyle(tg.color, 0.85);
+        for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+          const r0 = r - 10;
+          pxLine(g,
+            x + Math.cos(a) * r0, y + Math.sin(a) * r0,
+            x + Math.cos(a) * (r + 4), y + Math.sin(a) * (r + 4));
+        }
       }
     }
 

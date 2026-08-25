@@ -5,7 +5,7 @@
  * TelegraphSystem renders and the player reads. `kind` maps to the colour
  * language in §5: damage=red, buff=yellow, control=purple.
  *
- * `minFloor` gates a skill so the Knight gains one new pattern per floor.
+ * A hero always brings every skill in its definition whenever it appears.
  */
 
 import { TELEGRAPH_KIND } from '../config.js';
@@ -50,7 +50,6 @@ export const GOLDEN_KNIGHT = {
     {
       id: 'shieldBash',
       name: 'Shield Bash',
-      minFloor: 1,
       cooldown: 6,
       priority: 1,
       trigger: { type: 'nearbyFor', radius: 110, seconds: 0.6 },
@@ -62,13 +61,15 @@ export const GOLDEN_KNIGHT = {
         duration: 0.4,
         label: 'SHIELD BASH',
       },
-      effect: { type: 'coneDamage', radius: 130, arc: 75, mult: 1.3, knockback: 46 },
+      effect: {
+        type: 'coneDamage', radius: 130, arc: 75, mult: 1.3, knockback: 46,
+        waveTravel: 0.34, waveLife: 0.68,
+      },
       recover: 0.45,
     },
     {
       id: 'whirlwind',
       name: 'Whirlwind',
-      minFloor: 2,
       // Longer than the old instant hit: the vacuum drags the crowd in before
       // the last beat throws it, so it catches more and deserves the extra cd.
       cooldown: 10,
@@ -95,13 +96,13 @@ export const GOLDEN_KNIGHT = {
         pull: -26,
         knockback: 54,
         spinEvery: 0.09,
+        fxTail: 0.82,
       },
       recover: 0.6,
     },
     {
       id: 'valor',
       name: 'Call of Valor',
-      minFloor: 3,
       cooldown: 999,
       once: true,
       priority: 3,
@@ -120,6 +121,7 @@ export const GOLDEN_KNIGHT = {
         atkMult: 1.3,
         duration: 999,
         aura: 'valor',
+        auraIntro: 0.95,
         regenPct: 0.02,
         regenEvery: 2,
       },
@@ -142,7 +144,10 @@ export const GOLDEN_KNIGHT = {
       atTarget: true,
       heavy: true,
     },
-    effect: { type: 'circleDamageAt', radius: 200, mult: 3.0, knockback: 70 },
+    effect: {
+      type: 'circleDamageAt', radius: 200, mult: 3.0, knockback: 70,
+      fxLife: 1.45,
+    },
     recover: 0.8,
   },
 };
@@ -168,19 +173,20 @@ export const ICE_MAGE = {
   specialChance: 0.2,
   skills: [
     {
-      id: 'iceWall', name: 'Ice Wall', minFloor: 1, cooldown: 10, priority: 1,
+      id: 'iceWall', name: 'Ice Wall', cooldown: 10, priority: 1,
       telegraph: { kind: TELEGRAPH_KIND.BUFF, shape: 'ring', radius: 74, duration: 0.42, label: 'ICE WALL' },
       /**
-       * A real barricade, not just a number on the Mage: three pillars raise
-       * between it and the nearest cluster, chill anything that stands next to
-       * them, crack as the shield is spent, and shatter when it breaks or times
-       * out. `shield`/`duration` still drive Entity.takeDamage's absorb.
+       * A real barricade, not just a number on the Mage: a jagged ring rises
+       * around it, chills anything that stands next to the crystals, cracks as
+       * the shield is spent, and shatters when it breaks or times out.
+       * `shield`/`duration` still drive Entity.takeDamage's absorb.
        */
       effect: {
         type: 'iceWall',
         shield: 165,
         duration: 4.5,
-        segments: 3,
+        segments: 24,
+        ringRadius: 68,
         chillRadius: 46,
         chillMult: 0.22,
         chillEvery: 0.7,
@@ -192,7 +198,7 @@ export const ICE_MAGE = {
       recover: 0.35,
     },
     {
-      id: 'frostNova', name: 'Frost Nova', minFloor: 1, cooldown: 7, priority: 2,
+      id: 'frostNova', name: 'Frost Nova', cooldown: 7, priority: 2,
       /** Punishes melee closing in — the Mage wants to kite at basicRange 290. */
       trigger: { type: 'nearbyFor', radius: 130, seconds: 0.5 },
       telegraph: { kind: TELEGRAPH_KIND.CONTROL, shape: 'circle', radius: 120, duration: 0.42, label: 'FROST NOVA' },
@@ -205,11 +211,12 @@ export const ICE_MAGE = {
         stunSeconds: 0.5,
         knockback: 18,
         grow: 0.5,
+        life: 0.85,
       },
       recover: 0.4,
     },
     {
-      id: 'glacialLance', name: 'Glacial Lance', minFloor: 1, cooldown: 8, priority: 2,
+      id: 'glacialLance', name: 'Glacial Lance', cooldown: 8, priority: 2,
       /** A long directional threat the player can sidestep — aimed at the pack. */
       telegraph: {
         kind: TELEGRAPH_KIND.DAMAGE, shape: 'cone', radius: 300, arc: 20,
@@ -223,18 +230,203 @@ export const ICE_MAGE = {
         slowMult: 0.55,
         slowSeconds: 1.4,
         knockback: 22,
-        grow: 0.25,
-        life: 0.5,
+        grow: 0.48,
+        life: 1.1,
       },
       recover: 0.45,
     },
   ],
   ultimate: {
     id: 'blizzard', name: 'Blizzard', cooldown: 12, priority: 8,
-    telegraph: { kind: TELEGRAPH_KIND.DAMAGE, shape: 'circle', radius: 118, duration: 0.65, label: 'BLIZZARD ×3', heavy: true },
-    effect: { type: 'blizzard', storms: 3, radius: 96, duration: 4.4, tick: 0.55, tickMult: 0.34, slowMult: 0.64, slowSeconds: 0.8 },
+    telegraph: { kind: TELEGRAPH_KIND.DAMAGE, shape: 'circle', radius: 118, duration: 0.65, label: 'BLIZZARD ×5', heavy: true },
+    effect: { type: 'blizzard', storms: 5, radius: 96, duration: 4.4, tick: 0.55, tickMult: 0.34, slowMult: 0.64, slowSeconds: 0.8 },
     recover: 0.65,
   },
 };
 
-export const HEROES = { goldenKnight: GOLDEN_KNIGHT, iceMage: ICE_MAGE };
+export const LION_MONK = {
+  id: 'lionMonk',
+  name: 'Lion Monk',
+  art: 'lionMonk',
+  basicName: 'Sun Fist',
+  hp: 1380,
+  atk: 21,
+  speed: 70,
+  hitRadius: 19,
+  visualScale: 1,
+  shadowScale: 1.42,
+  combat: { crit: 0.16, dodge: 0.2, block: 0.08 },
+  aggroRadius: 190,
+  basicRange: 86,
+  basicInterval: 0.78,
+  basicWindup: 0.1,
+  skillInterval: { min: 3.1, max: 4.9 },
+  specialChance: 0.2,
+  skills: [
+    {
+      id: 'felineAgility',
+      name: 'Feline Agility',
+      cooldown: 5,
+      priority: 1,
+      telegraph: {
+        kind: TELEGRAPH_KIND.BUFF,
+        shape: 'cone',
+        radius: 160,
+        arc: 20,
+        duration: 0.28,
+        label: 'FELINE AGILITY',
+      },
+      effect: {
+        type: 'felineDash',
+        distance: 150,
+        evadeDistance: 92,
+        duration: 0.24,
+        dodgeBonus: 0.5,
+        dodgeSeconds: 0.7,
+      },
+      recover: 0.24,
+    },
+    {
+      id: 'burningPalm',
+      name: 'Burning Palm',
+      cooldown: 7,
+      priority: 2,
+      telegraph: {
+        kind: TELEGRAPH_KIND.DAMAGE,
+        shape: 'cone',
+        radius: 220,
+        arc: 38,
+        duration: 0.48,
+        label: 'BURNING PALM',
+      },
+      effect: {
+        type: 'burningPalm',
+        radius: 220,
+        arc: 38,
+        mult: 1.45,
+        knockback: 24,
+        burnSeconds: 3.2,
+        burnEvery: 0.5,
+        burnTickMult: 0.18,
+        fxLife: 0.62,
+      },
+      recover: 0.42,
+    },
+  ],
+  ultimate: {
+    id: 'solarLionFury',
+    name: 'Solar Lion Fury',
+    cooldown: 18,
+    priority: 10,
+    telegraph: {
+      kind: TELEGRAPH_KIND.BUFF,
+      shape: 'ring',
+      radius: 126,
+      duration: 0.58,
+      label: 'SOLAR LION FURY',
+      heavy: true,
+      atSelf: true,
+    },
+    effect: {
+      type: 'solarLionFury',
+      transformDuration: 1.15,
+      duration: 7,
+      atkMult: 1.7,
+      moveSpeedMult: 1.45,
+      attackSpeedMult: 1.8,
+      rangeMult: 1.55,
+      boltMult: 0.5,
+      finisherWindup: 0.58,
+      finisherRadius: 195,
+      finisherArc: 58,
+      finisherMult: 3.2,
+      finisherKnockback: 88,
+    },
+    recover: 0.5,
+  },
+};
+
+export const NIGHTVEIL_ARCHER = {
+  id: 'nightveilArcher',
+  name: 'Nightveil Archer',
+  art: 'nightveilArcher',
+  basicName: 'Dusk Arrow',
+  hp: 1320,
+  atk: 20,
+  speed: 62,
+  hitRadius: 18,
+  visualScale: 1,
+  shadowScale: 1.4,
+  combat: { crit: 0.22, dodge: 0.18, block: 0.05 },
+  aggroRadius: 230,
+  basicRange: 310,
+  basicInterval: 0.76,
+  basicWindup: 0.16,
+  basicProjectile: {
+    texture: 'proj_shadowArrow', speed: 650,
+    tint: 0xd8b8ff, trailColor: 0x8d4dcc, hitColor: 0xb86cff,
+    burstColor: 0x9d5bd2, burstKind: 'arcane', trailLength: 25,
+  },
+  skillInterval: { min: 3.2, max: 4.8 },
+  specialChance: 0.2,
+  skills: [
+    {
+      id: 'shadowstep', name: 'Shadowstep Volley', cooldown: 6, priority: 1,
+      telegraph: {
+        kind: TELEGRAPH_KIND.CONTROL, shape: 'cone', radius: 180, arc: 24,
+        duration: 0.34, label: 'SHADOWSTEP',
+      },
+      effect: {
+        type: 'shadowstep', distance: 155, duration: 0.3,
+        volley: 3, mult: 0.72, dodgeBonus: 0.42, dodgeSeconds: 0.8,
+      },
+      recover: 0.22,
+    },
+    {
+      id: 'venomFang', name: 'Venom Fang', cooldown: 7, priority: 2,
+      telegraph: {
+        kind: TELEGRAPH_KIND.DAMAGE, shape: 'cone', radius: 330, arc: 16,
+        duration: 0.5, label: 'VENOM FANG', aimAtCluster: true,
+      },
+      effect: {
+        type: 'venomArrow', radius: 330, arc: 16, mult: 1.35,
+        poisonSeconds: 4, poisonEvery: 0.55, poisonTickMult: 0.16,
+        slowMult: 0.72, slowSeconds: 1.6, life: 0.72,
+      },
+      recover: 0.38,
+    },
+    {
+      id: 'umbralTrap', name: 'Umbral Trap', cooldown: 9, priority: 3,
+      trigger: { type: 'crowd', radius: 220, count: 2 },
+      telegraph: {
+        kind: TELEGRAPH_KIND.CONTROL, shape: 'circle', radius: 105,
+        duration: 0.55, label: 'UMBRAL TRAP', atTarget: true,
+      },
+      effect: {
+        type: 'umbralTrap', radius: 105, mult: 1.05,
+        rootSeconds: 1.15, slowMult: 0.48, slowSeconds: 2.4, life: 1.25,
+      },
+      recover: 0.4,
+    },
+  ],
+  ultimate: {
+    id: 'eclipseBarrage', name: 'Eclipse Barrage', cooldown: 15, priority: 10,
+    telegraph: {
+      kind: TELEGRAPH_KIND.DAMAGE, shape: 'circle', radius: 205,
+      duration: 0.7, label: 'ECLIPSE BARRAGE', atTarget: true, heavy: true,
+    },
+    effect: {
+      type: 'eclipseBarrage', radius: 205, waves: 6, interval: 0.28,
+      tickMult: 0.52, finalMult: 1.3, slowMult: 0.65, slowSeconds: 0.7,
+      duration: 2.3,
+    },
+    recover: 0.62,
+  },
+};
+
+export const HEROES = {
+  goldenKnight: GOLDEN_KNIGHT,
+  iceMage: ICE_MAGE,
+  lionMonk: LION_MONK,
+  nightveilArcher: NIGHTVEIL_ARCHER,
+};

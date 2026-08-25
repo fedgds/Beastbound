@@ -88,12 +88,12 @@ export default class MonsterAI {
         return Math.max(hero.hitRadius + 10, m.def.range * 0.7);
 
       case ROLE.RANGED:
-        // stay outside the aggro ring but inside our own range
-        return Phaser.Math.Clamp(
-          hero.aggroRadius + 24,
-          hero.aggroRadius + 24,
-          m.def.range * 0.95,
-        );
+        // Stay outside the aggro ring when possible, but never choose a
+        // standoff beyond this unit's own attack range.  The previous Clamp
+        // call used an aggro-based minimum that could be larger than its
+        // range cap (e.g. Bomb Goblin vs. the Ice Mage), which made Phaser
+        // return the unreachable minimum and the monster walk out of range.
+        return Math.min(hero.aggroRadius + 24, m.def.range * 0.9);
 
       case ROLE.CC:
         // hover at the edge of our reach — accepts some risk to keep slowing

@@ -9,6 +9,7 @@
 import { ARENA, MANA } from '../config.js';
 import ArenaScenery from '../art/ArenaScenery.js';
 import Hero from '../entities/Hero.js';
+import Monster from '../entities/Monster.js';
 import HeroAI from '../ai/HeroAI.js';
 import MonsterAI from '../ai/MonsterAI.js';
 import BattleSystem from '../systems/BattleSystem.js';
@@ -23,11 +24,22 @@ import UltimateSystem from '../systems/UltimateSystem.js';
 import AudioSystem from '../systems/AudioSystem.js';
 import UISystem from '../ui/UISystem.js';
 import Economy from '../economy/Economy.js';
-import { HEROES } from '../data/heroes.js';
+import { HEROES, HERO_STATE } from '../data/heroes.js';
 import { MONSTERS, MONSTER_BY_ID, ROLE_LABEL } from '../data/monsters.js';
 import { themeForFloor } from '../data/arenaThemes.js';
 
 const MAX_DT = 1 / 20; // clamp so a tab-out can never teleport the simulation
+
+const LAB_FLOOR = {
+  floor: 0, hpMult: 1, atkMult: 1, speedMult: 1, ultRateMult: 1,
+};
+const LAB_TARGET_FLOOR = { ...LAB_FLOOR, hpMult: 12, atkMult: 0.1 };
+const LAB_DUMMY = {
+  id: 'labDummy', name: 'Training Construct', short: 'Dummy', art: 'golem',
+  role: 'tank', cost: 0, hp: 9999, atk: 0, speed: 0, range: 0,
+  attackInterval: 99, hitRadius: 16, tint: '#8f78a8',
+  combat: { crit: 0, dodge: 0, block: 0 }, passive: null, active: null,
+};
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -40,6 +52,10 @@ export default class GameScene extends Phaser.Scene {
     this.monsters = [];
     this.hero = null;
     this.needsMainMenu = true;
+    this.labMode = false;
+    this.labKind = 'hero';
+    this.labSelectedHeroId = 'goldenKnight';
+    this.labSelectedMonsterId = 'golem';
 
     this.arenaBounds = {
       x: ARENA.x, y: ARENA.y, right: ARENA.right, bottom: ARENA.bottom,
@@ -113,7 +129,7 @@ export default class GameScene extends Phaser.Scene {
       this.ui.showMainMenu(() => {
         this.ui.hideMainMenu();
         this.#showRosterSelection(cfg, def);
-      });
+      }, () => this.#enterSkillLab());
     } else {
       this.#showRosterSelection(cfg, def);
     }
@@ -133,9 +149,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   #showIntroBanner(cfg, heroDef, rosterIds) {
-    const skills = heroDef.skills
-      .filter((s) => cfg.floor >= s.minFloor)
-      .map((s) => s.name);
+    const skills = heroDef.skills.map((s) => s.name);
     const roster = rosterIds
       .map((id) => `<b>${MONSTER_BY_ID[id].short}</b> <span class="dim">(${ROLE_LABEL[MONSTER_BY_ID[id].role]})</span>`)
       .join(' · ');
@@ -156,6 +170,242 @@ export default class GameScene extends Phaser.Scene {
         this.battle.begin();
       },
     });
+  }
+
+  // ═══ skill lab ══════════════════════════════════════════════════════════
+  #enterSkillLab() {
+    this.ui.hideMainMenu();
+    this.ui.hideBanner();
+    this.labMode = true;
+    this.battle.toIntro();
+    this.arena.build(themeForFloor(4));
+    this.ui.showSkillLab({
+      heroes: Object.values(HEROES),
+      monsters: MONSTERS,
+      onHero: (id) => this.#loadLabHero(id),
+      onMonster: (id) => this.#loadLabMonster(id),
+      onAction: (id) => this.#runLabAction(id),
+      onReset: () => this.#resetSkillLab(),
+      onExit: () => this.#exitSkillLab(),
+    });
+    this.#loadLabHero(this.labSelectedHeroId);
+  }
+
+  #clearLabActors() {
+    this.telegraph.reset();
+    this.combat.reset();
+    this.skills.reset();
+    this.fx.resetDecals();
+    for (const m of this.monsters) m.destroy();
+    this.monsters = [];
+    this.hero?.destroy();
+    this.hero = null;
+    this.labCaster = null;
+    this.labPrimaryTarget = null;
+    this.clock = 0;
+    document.body.classList.remove('danger');
+  }
+
+  #loadLabHero(id) {
+    const def = HEROES[id];
+    if (!def) return;
+    this.#clearLabActors();
+    this.labKind = 'hero';
+    this.labSelectedHeroId = id;
+
+    const x = ARENA.cx - 170;
+    const y = ARENA.cy + 24;
+    this.hero = new Hero(this, def, LAB_FLOOR, x, y);
+    this.hero.nextSkillAt = Infinity;
+    this.hero.stationaryFor = 999;
+    this.ui.setHero(def);
+
+    const targetX = Phaser.Math.Clamp(
+      x + Math.max(76, Math.min(286, def.basicRange * 0.82)),
+      ARENA.x + 80, ARENA.right - 90,
+    );
+    const positions = [
+      { x: targetX, y },
+      { x: Math.min(ARENA.right - 60, targetX + 48), y: y - 62 },
+      { x: Math.min(ARENA.right - 54, targetX + 66), y: y + 62 },
+    ];
+    this.monsters = positions.map((p) => new Monster(this, LAB_DUMMY, p.x, p.y));
+    this.labPrimaryTarget = this.monsters[0];
+    this.hero.target = this.labPrimaryTarget;
+    this.hero.facing = 1;
+
+    const actions = [
+      {
+        id: 'basic', label: def.basicName ?? 'Basic Attack', tone: '',
+        desc: 'Real basic attack · transformed variants included',
+      },
+      ...def.skills.map((skill) => ({
+        id: `skill:${skill.id}`, label: skill.name, tone: 'active-skill',
+        desc: `${skill.telegraph.label} · ${skill.telegraph.shape} ${skill.telegraph.radius ?? ''}`,
+      })),
+      {
+        id: `skill:${def.ultimate.id}`, label: `ULT · ${def.ultimate.name}`, tone: 'ultimate',
+        desc: 'Full telegraph and ultimate effect · cooldown disabled',
+      },
+    ];
+    this.ui.setSkillLabSelection(
+      'hero', id, def.name,
+      'Three durable training constructs receive the real attack and status effects.',
+      actions,
+    );
+  }
+
+  #loadLabMonster(id) {
+    const def = MONSTER_BY_ID[id];
+    const heroDef = HEROES[this.labSelectedHeroId] ?? HEROES.goldenKnight;
+    if (!def || !heroDef) return;
+    this.#clearLabActors();
+    this.labKind = 'monster';
+    this.labSelectedMonsterId = id;
+
+    const y = ARENA.cy + 24;
+    this.hero = new Hero(this, heroDef, LAB_TARGET_FLOOR, ARENA.cx + 150, y);
+    this.hero.nextSkillAt = Infinity;
+    this.hero.stationaryFor = 999;
+    this.ui.setHero(heroDef);
+
+    this.labCaster = new Monster(this, def, ARENA.cx - 120, y);
+    this.labCaster.facing = 1;
+    this.monsters = [this.labCaster];
+    // Bloom needs an injured ally to display the team-heal branch. Keep that
+    // assistant out of the way for every other monster.
+    if (def.passive?.id === 'bloom') {
+      const ally = new Monster(this, LAB_DUMMY, ARENA.cx - 55, y + 55);
+      this.monsters.push(ally);
+    }
+    this.labCasterStart = { x: this.labCaster.x, y: this.labCaster.y };
+
+    this.ui.setSkillLabSelection(
+      'monster', id, def.name,
+      `The selected monster attacks ${heroDef.name}; conditions and cooldowns are forced ready.`,
+      [
+        { id: 'basic', label: 'BASIC ATTACK', desc: 'Normal attack and projectile path' },
+        { id: 'passive', label: `PASSIVE · ${def.passive.name}`, tone: 'passive', desc: def.passive.desc },
+        { id: 'active', label: `ACTIVE · ${def.active.name}`, tone: 'active-skill', desc: def.active.desc },
+      ],
+    );
+  }
+
+  #runLabAction(actionId) {
+    this.audio.unlock();
+    if (this.labKind === 'hero') {
+      if (actionId === 'basic') {
+        this.telegraph.reset();
+        this.heroAI.performBasicNow(this.hero, this.labPrimaryTarget);
+        return;
+      }
+      const id = actionId.replace(/^skill:/, '');
+      const skill = [...this.hero.def.skills, this.hero.def.ultimate].find((s) => s.id === id);
+      if (skill) this.#castLabHeroSkill(skill);
+      return;
+    }
+
+    const monster = this.labCaster;
+    if (!monster?.alive || !this.hero?.alive) return;
+    monster.x = this.labCasterStart.x;
+    monster.y = this.labCasterStart.y;
+    monster.dashing = false;
+    monster.dash = null;
+    monster.skillCd = {};
+    this.hero.hp = this.hero.maxHp;
+    this.hero.status.stunUntil = 0;
+    this.hero.status.slowUntil = 0;
+    this.hero.stationaryFor = 999;
+    this.hero.sprite.clearTint();
+
+    if (actionId === 'basic') {
+      const activeId = monster.def.active?.id;
+      if (activeId) monster.skillCd[activeId] = Infinity;
+      // Charge skills use an internal shared key in the production executor.
+      monster.skillCd.recklessCharge = Infinity;
+      this.skills.performAttack(monster, this.hero);
+      monster.skillCd = {};
+    } else if (actionId === 'passive') {
+      const activeId = monster.def.active?.id;
+      if (activeId) monster.skillCd[activeId] = Infinity;
+      monster.skillCd.recklessCharge = Infinity;
+      this.skills.showcaseMonsterPassive(monster, this.hero);
+      monster.skillCd = {};
+    } else if (actionId === 'active') {
+      this.skills.showcaseMonsterActive(monster, this.hero);
+    }
+  }
+
+  #castLabHeroSkill(skill) {
+    const hero = this.hero;
+    const target = this.labPrimaryTarget;
+    if (!hero?.alive || !target?.alive) return;
+    this.telegraph.reset();
+    hero.pendingSkill = skill;
+    hero.pendingRecover = skill.recover;
+    hero.target = target;
+    hero.facing = target.x >= hero.x ? 1 : -1;
+    for (const m of this.monsters) {
+      if (!m.alive) continue;
+      m.hp = m.maxHp;
+      m.status.stunUntil = 0;
+      m.status.slowUntil = 0;
+      m.drawHpBar();
+    }
+
+    const tg = skill.telegraph;
+    const atTarget = tg.atTarget && !tg.atSelf;
+    const ctx = {
+      x: atTarget ? target.x : hero.x,
+      y: atTarget ? target.y : hero.y - 10,
+      facing: hero.facing,
+    };
+    if (skill.effect?.type === 'blizzard') {
+      const count = skill.effect.storms ?? 5;
+      ctx.spots = Array.from({ length: count }, (_, i) => {
+        const a = (i / count) * Math.PI * 2 - Math.PI / 2;
+        return {
+          x: Phaser.Math.Clamp(target.x + Math.cos(a) * 105, ARENA.x + 105, ARENA.right - 105),
+          y: Phaser.Math.Clamp(target.y + Math.sin(a) * 72, ARENA.y + 80, ARENA.bottom - 55),
+        };
+      });
+    }
+
+    const telegraphSpot = ctx.spots?.[0] ?? ctx;
+    hero.setState(HERO_STATE.TELEGRAPH, tg.duration + 1);
+    hero.playFor('windup', tg.duration);
+    this.telegraph.begin({
+      ...tg,
+      source: hero,
+      x: telegraphSpot.x,
+      y: telegraphSpot.y,
+      spots: ctx.spots,
+      facing: ctx.facing,
+      onComplete: () => {
+        if (!hero.alive) return;
+        hero.play('attack', true);
+        hero.setState(HERO_STATE.CAST, 0.18);
+        this.skills.executeHeroEffect(hero, skill, ctx);
+        hero.pendingSkill = null;
+      },
+      onCancel: () => {
+        hero.pendingSkill = null;
+        hero.setState(HERO_STATE.IDLE);
+      },
+    });
+  }
+
+  #resetSkillLab() {
+    if (this.labKind === 'monster') this.#loadLabMonster(this.labSelectedMonsterId);
+    else this.#loadLabHero(this.labSelectedHeroId);
+  }
+
+  #exitSkillLab() {
+    this.labMode = false;
+    this.ui.hideSkillLab();
+    this.#clearLabActors();
+    this.needsMainMenu = true;
+    this.startFloor();
   }
 
   #onVictory() {
@@ -213,7 +463,17 @@ export default class GameScene extends Phaser.Scene {
     // the room runs on real time: torches keep burning through hitstop
     this.arena.update(realDt);
 
-    if (this.battle.running) {
+    if (this.labMode) {
+      this.clock += dt;
+      this.telegraph.update(dt);
+      this.skills.update(dt);
+      this.combat.update(dt);
+      this.hero?.update(dt);
+      for (const m of this.monsters) {
+        if (m.dashing) this.skills.tickDash(m, dt);
+        m.update(dt);
+      }
+    } else if (this.battle.running) {
       this.clock += dt;
 
       this.mana.update(dt);
