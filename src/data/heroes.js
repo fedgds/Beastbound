@@ -31,7 +31,8 @@ export const GOLDEN_KNIGHT = {
   atk: 22,
   speed: 46,
   hitRadius: 20,
-  visualScale: 1.18,
+  visualScale: 1,
+  shadowScale: 1.45,
   combat: { crit: 0.12, dodge: 0.06, block: 0.18 },
 
   /** Aggro / attack ring, drawn on the battlefield (spec §2.3, §6). */
@@ -68,7 +69,9 @@ export const GOLDEN_KNIGHT = {
       id: 'whirlwind',
       name: 'Whirlwind',
       minFloor: 2,
-      cooldown: 9,
+      // Longer than the old instant hit: the vacuum drags the crowd in before
+      // the last beat throws it, so it catches more and deserves the extra cd.
+      cooldown: 10,
       priority: 2,
       trigger: { type: 'crowd', radius: 130, count: 3 },
       telegraph: {
@@ -78,7 +81,21 @@ export const GOLDEN_KNIGHT = {
         duration: 0.45,
         label: 'WHIRLWIND',
       },
-      effect: { type: 'circleDamage', radius: 150, mult: 1.7, knockback: 30 },
+      /**
+       * Three revolutions instead of one snapshot. Radius steps outward per
+       * beat; beats 1-2 pull inward (negative knockback), beat 3 blasts out.
+       */
+      effect: {
+        type: 'spinAttack',
+        radius: 150,
+        mult: 0.62,
+        ticks: 3,
+        interval: 0.34,
+        steps: [0.72, 0.86, 1],
+        pull: -26,
+        knockback: 54,
+        spinEvery: 0.09,
+      },
       recover: 0.6,
     },
     {
@@ -96,7 +113,16 @@ export const GOLDEN_KNIGHT = {
         duration: 0.4,
         label: 'CALL OF VALOR',
       },
-      effect: { type: 'selfBuff', healPct: 0.15, atkMult: 1.3, duration: 999 },
+      /** Lasts the fight, so it earns a sustained aura rather than one ring. */
+      effect: {
+        type: 'selfBuff',
+        healPct: 0.15,
+        atkMult: 1.3,
+        duration: 999,
+        aura: 'valor',
+        regenPct: 0.02,
+        regenEvery: 2,
+      },
       recover: 0.35,
     },
   ],
@@ -130,7 +156,8 @@ export const ICE_MAGE = {
   atk: 18,
   speed: 38,
   hitRadius: 18,
-  visualScale: 1.05,
+  visualScale: 1,
+  shadowScale: 1.4,
   combat: { crit: 0.1, dodge: 0.1, block: 0.12 },
   aggroRadius: 210,
   basicRange: 290,
@@ -143,7 +170,63 @@ export const ICE_MAGE = {
     {
       id: 'iceWall', name: 'Ice Wall', minFloor: 1, cooldown: 10, priority: 1,
       telegraph: { kind: TELEGRAPH_KIND.BUFF, shape: 'ring', radius: 74, duration: 0.42, label: 'ICE WALL' },
-      effect: { type: 'iceWall', shield: 165, duration: 4.5 }, recover: 0.35,
+      /**
+       * A real barricade, not just a number on the Mage: three pillars raise
+       * between it and the nearest cluster, chill anything that stands next to
+       * them, crack as the shield is spent, and shatter when it breaks or times
+       * out. `shield`/`duration` still drive Entity.takeDamage's absorb.
+       */
+      effect: {
+        type: 'iceWall',
+        shield: 165,
+        duration: 4.5,
+        segments: 3,
+        chillRadius: 46,
+        chillMult: 0.22,
+        chillEvery: 0.7,
+        slowMult: 0.6,
+        slowSeconds: 1.1,
+        shatterMult: 0.9,
+        shatterRadius: 84,
+      },
+      recover: 0.35,
+    },
+    {
+      id: 'frostNova', name: 'Frost Nova', minFloor: 1, cooldown: 7, priority: 2,
+      /** Punishes melee closing in — the Mage wants to kite at basicRange 290. */
+      trigger: { type: 'nearbyFor', radius: 130, seconds: 0.5 },
+      telegraph: { kind: TELEGRAPH_KIND.CONTROL, shape: 'circle', radius: 120, duration: 0.42, label: 'FROST NOVA' },
+      effect: {
+        type: 'frostNova',
+        radius: 120,
+        mult: 1.05,
+        slowMult: 0.45,
+        slowSeconds: 2.2,
+        stunSeconds: 0.5,
+        knockback: 18,
+        grow: 0.5,
+      },
+      recover: 0.4,
+    },
+    {
+      id: 'glacialLance', name: 'Glacial Lance', minFloor: 1, cooldown: 8, priority: 2,
+      /** A long directional threat the player can sidestep — aimed at the pack. */
+      telegraph: {
+        kind: TELEGRAPH_KIND.DAMAGE, shape: 'cone', radius: 300, arc: 20,
+        duration: 0.5, label: 'GLACIAL LANCE', aimAtCluster: true,
+      },
+      effect: {
+        type: 'lanceBeam',
+        radius: 300,
+        arc: 20,
+        mult: 1.5,
+        slowMult: 0.55,
+        slowSeconds: 1.4,
+        knockback: 22,
+        grow: 0.25,
+        life: 0.5,
+      },
+      recover: 0.45,
     },
   ],
   ultimate: {

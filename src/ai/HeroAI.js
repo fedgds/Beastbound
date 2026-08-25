@@ -133,7 +133,30 @@ export default class HeroAI {
 
     const regular = hero.skills.filter((skill) => hero.skillReady(skill));
     if (!regular.length) return null;
-    return Phaser.Utils.Array.GetRandom(regular);
+    // Honour the trigger blocks in heroes.js: a self-centred nova fired into an
+    // empty arena, or a crowd-clear with nothing crowded, wastes the cadence and
+    // reads as the boss flailing. Prefer skills whose trigger is satisfied, but
+    // never stall — if the filter empties the list, fall back to the full set so
+    // a move still comes out on the beat.
+    const wanted = regular.filter((skill) => this.#triggerSatisfied(hero, skill));
+    return Phaser.Utils.Array.GetRandom(wanted.length ? wanted : regular);
+  }
+
+  /** True when a skill's `crowd` / `nearbyFor` trigger currently holds. Skills
+   *  with no trigger (or one we don't gate on) always pass. */
+  #triggerSatisfied(hero, skill) {
+    const trig = skill.trigger;
+    if (!trig) return true;
+    const monsters = this.scene.monsters;
+    if (trig.type === 'crowd') {
+      const near = monsters.filter((m) => m.alive
+        && hero.distanceTo(m) <= trig.radius).length;
+      return near >= (trig.count ?? 1);
+    }
+    if (trig.type === 'nearbyFor') {
+      return monsters.some((m) => m.alive && hero.distanceTo(m) <= trig.radius);
+    }
+    return true;
   }
 
   // ═══ skill / ultimate launch ═════════════════════════════════════════════
@@ -143,6 +166,18 @@ export default class HeroAI {
     hero.triggerTimers[skill.id] = 0;
     hero.pendingSkill = skill;
     hero.pendingRecover = skill.recover;
+
+    // Face the commitment before the telegraph is built. #decide sets facing
+    // from the target only on the basic-attack path, so without this a cone
+    // captures last beat's facing and points the wrong way.
+    if (tg.aimAtCluster) {
+      // A long line wants the pack, not the nearest straggler — reuse the
+      // ultimate's cluster finder so the beam lands where bodies actually are.
+      const spot = this.scene.ultimate.pickTarget(hero, (tg.radius ?? 200) * 0.5);
+      hero.facing = spot.x >= hero.x ? 1 : -1;
+    } else if (hero.target) {
+      hero.facing = hero.target.x >= hero.x ? 1 : -1;
+    }
 
     // Ground position is fixed at wind-up time — the telegraph never chases.
     const ctx = { x: hero.x, y: hero.y - 10, facing: hero.facing };

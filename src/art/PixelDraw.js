@@ -141,11 +141,11 @@ export function dither(g, x, y, w, h, color, density = 0.5, alpha = 1) {
  * at the bottom. `power` bends the ramp — 1 is linear, higher keeps the light
  * end clean for longer.
  */
-export function ditherRampV(g, x, y, w, h, color, from, to, power = 1) {
+export function ditherRampV(g, x, y, w, h, color, from, to, power = 1, alpha = 1) {
   const bh = Math.max(1, Math.round(h / P));
   for (let i = 0; i < bh; i++) {
     const t = bh === 1 ? 0 : i / (bh - 1);
-    dither(g, x, y + i * P, w, P, color, from + (to - from) * (power === 1 ? t : t ** power));
+    dither(g, x, y + i * P, w, P, color, from + (to - from) * (power === 1 ? t : t ** power), alpha);
   }
 }
 

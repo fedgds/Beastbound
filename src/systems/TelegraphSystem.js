@@ -14,6 +14,8 @@
  */
 
 import { COLORS, DEPTH, TELEGRAPH_KIND, telegraphColor } from '../config.js';
+import { pxArc, pxCone, pxDisc, pxLine, snap } from '../art/PixelDraw.js';
+import { PIXEL_FONT } from './FxSystem.js';
 
 let nextId = 1;
 
@@ -51,21 +53,17 @@ export default class TelegraphSystem {
       flashPhase: 0,
     };
 
-    tg.text = this.scene.add.text(tg.x, tg.y - 74, tg.label, {
-      fontFamily: 'monospace',
-      fontSize: tg.heavy ? '14px' : '11px',
-      fontStyle: 'bold',
+    // Set in the pixel face at a whole-pixel size, like every other bit of text
+    // in the game. Deliberately not tweened: scaling a bitmap glyph up from 0.7
+    // re-samples it every frame, which is exactly what the pixel font avoids.
+    tg.text = this.scene.add.text(snap(tg.x), snap(tg.y - 74), tg.label, {
+      fontFamily: PIXEL_FONT,
+      fontSize: tg.heavy ? '16px' : '8px',
       color: `#${color.toString(16).padStart(6, '0')}`,
       stroke: '#0b0912',
       strokeThickness: 4,
+      resolution: 1,
     }).setOrigin(0.5).setDepth(DEPTH.popup);
-
-    this.scene.tweens.add({
-      targets: tg.text,
-      scale: { from: 0.7, to: 1 },
-      duration: 140,
-      ease: 'Back.out',
-    });
 
     // Heavy skills (the ultimate) get an extra audible-feeling punch of warning.
     if (tg.heavy) {
@@ -140,18 +138,12 @@ export default class TelegraphSystem {
   #dispose(tg) {
     tg.gfx.destroy();
     // Hand the label to a local first: tg.text is nulled straight away so #draw
-    // stops touching it, and the fade-out tween must not read it back.
+    // stops touching it. Destroyed outright rather than faded — a tween would
+    // ride real RAF (so the label would outlive the floor whenever the sim is
+    // stepped manually), and the effect's own flash lands on the same frame.
     const label = tg.text;
     tg.text = null;
-    if (label) {
-      this.scene.tweens.add({
-        targets: label,
-        alpha: 0,
-        y: label.y - 10,
-        duration: 220,
-        onComplete: () => label.destroy(),
-      });
-    }
+    label?.destroy();
     tg.source?.sprite?.clearTint();
     this.active = this.active.filter((t) => t !== tg);
   }
@@ -175,50 +167,62 @@ export default class TelegraphSystem {
     }
   }
 
-  /** Ground indicator: filled area + a sweep that shows time remaining. */
+  /**
+   * Ground indicator: filled area + a sweep that shows time remaining.
+   *
+   * Every shape is rasterised onto the P lattice instead of stroked. An
+   * anti-aliased circle under pixel-art sprites is the single loudest tell that
+   * an overlay wasn't drawn for the game. The circles are *true* circles
+   * (rx === ry), deliberately not ground-squashed: combat resolves on plain
+   * distance, so the drawn area has to be the area that actually gets hit.
+   */
   #draw(tg, p) {
     const g = tg.gfx;
     g.clear();
 
     const pulse = 0.35 + 0.25 * Math.sin(p * Math.PI * 6);
+    const x = snap(tg.x);
+    const y = snap(tg.y);
+    const r = tg.radius;
 
     if (tg.shape === 'cone') {
       const half = Phaser.Math.DegToRad(tg.arc) / 2;
       const base = tg.facing < 0 ? Math.PI : 0;
 
-      g.fillStyle(tg.color, 0.16);
-      g.slice(tg.x, tg.y, tg.radius, base - half, base + half, false);
-      g.fillPath();
+      // hatched full extent, then a solid wedge that fills as the cast charges
+      g.fillStyle(tg.color, 0.22);
+      pxCone(g, x, y, r, half, tg.facing, { every: 2 });
+      g.fillStyle(tg.color, 0.4);
+      pxCone(g, x, y, r * p, half, tg.facing);
 
-      // filling wedge = the part already "charged"
-      g.fillStyle(tg.color, 0.34);
-      g.slice(tg.x, tg.y, tg.radius * p, base - half, base + half, false);
-      g.fillPath();
-
-      g.lineStyle(2, tg.color, pulse + 0.4);
-      g.slice(tg.x, tg.y, tg.radius, base - half, base + half, false);
-      g.strokePath();
+      // rim + the two edges, so the exact boundary is unambiguous
+      g.fillStyle(tg.color, Math.min(1, pulse + 0.45));
+      pxArc(g, x, y, r, r, { from: base - half, to: base + half });
+      for (const s of [-1, 1]) {
+        const a = base + s * half;
+        pxLine(g, x, y, x + Math.cos(a) * r, y + Math.sin(a) * r);
+      }
     } else if (tg.shape === 'ring') {
-      g.lineStyle(3, tg.color, 0.5 + pulse);
-      g.strokeCircle(tg.x, tg.y, tg.radius * (0.55 + 0.45 * p));
-      g.lineStyle(1, tg.color, 0.35);
-      g.strokeCircle(tg.x, tg.y, tg.radius);
+      const rr = r * (0.55 + 0.45 * p);
+      g.fillStyle(tg.color, Math.min(1, 0.5 + pulse));
+      pxArc(g, x, y, rr, rr, { dash: 5, gap: 3, rot: p * 4 });
+      g.fillStyle(tg.color, 0.35);
+      pxArc(g, x, y, r, r, { dash: 2, gap: 4 });
     } else {
-      g.fillStyle(tg.color, 0.14);
-      g.fillCircle(tg.x, tg.y, tg.radius);
-      g.fillStyle(tg.color, 0.3);
-      g.fillCircle(tg.x, tg.y, tg.radius * p); // expanding fill = countdown
-      g.lineStyle(2, tg.color, 0.55 + pulse * 0.6);
-      g.strokeCircle(tg.x, tg.y, tg.radius);
+      g.fillStyle(tg.color, 0.16);
+      pxDisc(g, x, y, r, r, { every: 2 });
+      g.fillStyle(tg.color, 0.32);
+      pxDisc(g, x, y, r * p, r * p); // expanding fill = countdown
+      g.fillStyle(tg.color, Math.min(1, 0.55 + pulse * 0.6));
+      pxArc(g, x, y, r, r);
 
       // crosshair ticks so the centre is unmistakable
-      g.lineStyle(2, tg.color, 0.8);
+      g.fillStyle(tg.color, 0.85);
       for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        const r0 = tg.radius - 10;
-        g.beginPath();
-        g.moveTo(tg.x + Math.cos(a) * r0, tg.y + Math.sin(a) * r0);
-        g.lineTo(tg.x + Math.cos(a) * (tg.radius + 4), tg.y + Math.sin(a) * (tg.radius + 4));
-        g.strokePath();
+        const r0 = r - 10;
+        pxLine(g,
+          x + Math.cos(a) * r0, y + Math.sin(a) * r0,
+          x + Math.cos(a) * (r + 4), y + Math.sin(a) * (r + 4));
       }
     }
 

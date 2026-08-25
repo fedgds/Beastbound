@@ -15,7 +15,7 @@ import {
 } from '../art/PixelDraw.js';
 
 /** Silkscreen is loaded before boot (see main.js) so canvas text measures right. */
-const PIXEL_FONT = '"Silkscreen", ui-monospace, monospace';
+export const PIXEL_FONT = '"Silkscreen", ui-monospace, monospace';
 
 /**
  * An arc in the air (so a true circle, not ground-squashed), mirrored about the
@@ -436,33 +436,6 @@ export default class FxSystem {
     g.fillStyle(color, 0.7);
     pxLine(g, x, y, x - Math.cos(angle) * length, y - Math.sin(angle) * length);
     this.scene.tweens.add({ targets: g, alpha: 0, duration: 150, onComplete: () => g.destroy() });
-  }
-
-  /** A faceted temporary ice barricade that reads as both cover and shield. */
-  iceWall(x, y, facing, seconds) {
-    const g = this.scene.add.graphics().setDepth(DEPTH.unitFx);
-    const baseX = snap(x - facing * 20);
-    const baseY = snap(y + 16);
-    const draw = () => {
-      g.clear();
-      g.fillStyle(0x4f91bd, 0.82);
-      g.fillRect(baseX - 20, baseY - 30, 40, 28);
-      g.fillStyle(0x9cecff, 0.9);
-      g.fillTriangle(baseX - 22, baseY - 30, baseX - 12, baseY - 47, baseX - 2, baseY - 30);
-      g.fillTriangle(baseX - 4, baseY - 30, baseX + 5, baseY - 54, baseX + 14, baseY - 30);
-      g.fillStyle(0xe5feff, 0.85);
-      g.fillRect(baseX - 16, baseY - 25, 5, 17);
-      g.fillRect(baseX + 4, baseY - 27, 5, 18);
-      g.fillStyle(0x234d78, 0.7);
-      g.fillRect(baseX - 1, baseY - 28, 3, 26);
-    };
-    draw();
-    this.scene.tweens.add({
-      targets: g, alpha: { from: 1, to: 0.62 }, duration: 320, yoyo: true, repeat: Math.max(0, Math.floor(seconds / 0.64) - 1),
-    });
-    this.scene.time.delayedCall(seconds * 1000, () => {
-      this.scene.tweens.add({ targets: g, alpha: 0, y: g.y - 10, duration: 200, onComplete: () => g.destroy() });
-    });
   }
 
   destroy() {

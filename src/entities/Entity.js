@@ -14,6 +14,7 @@ const LOCKING = new Set(['windup', 'attack', 'hit', 'die']);
 export default class Entity {
   constructor(scene, {
     art, x, y, hp, atk, speed, hitRadius, isHero = false, visualScale = 0.78,
+    shadowScale = visualScale,
   }) {
     this.scene = scene;
     this.art = art;
@@ -52,7 +53,9 @@ export default class Entity {
     this.shadow = scene.add.image(x, y + 2, 'shadow')
       .setDepth(DEPTH.shadow)
       .setAlpha(0.35)
-      .setDisplaySize(hitRadius * 2.4 * visualScale, hitRadius * 1.1 * visualScale);
+      // Sized independently of `visualScale`: a sprite baked large and rendered
+      // 1:1 still needs the footprint of a boss.
+      .setDisplaySize(hitRadius * 2.4 * shadowScale, hitRadius * 1.1 * shadowScale);
 
     this.sprite = scene.add.sprite(x, y, `${art}_idle0`)
       .setDepth(DEPTH.unit)

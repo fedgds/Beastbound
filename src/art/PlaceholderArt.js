@@ -16,6 +16,7 @@
  */
 
 import { ANIM } from '../config.js';
+import { dither, ditherRampV, rng, speckle } from './PixelDraw.js';
 
 /** Frame counts per state — spec §5 asks for short, readable 4–8 frame actions. */
 export const ANIM_FRAMES = {
@@ -264,82 +265,135 @@ const UNITS = {
   },
 
   // ── Ice Mage (boss) — image/character/hero/2.png
+  // Baked at 46x68 and rendered 1:1, so the hood, layered robe, snowflake
+  // embroidery and faceted staff crystal all have room to read.
   iceMage: {
-    w: 34, h: 48,
+    w: 46, h: 68,
     signature: 'iceMage',
+    poseAmp: 1.5,
     pal: { body: 0x9bc5df, dark: 0x456b91, accent: 0x9ff4ff, line: 0x17263f },
     parts: [
-      { x: -14, y: -37, w: 8, h: 25, c: 0x789fc1, tag: 'cape', z: -1 },
-      { x: 6, y: -37, w: 8, h: 25, c: 0x789fc1, tag: 'cape', z: -1 },
-      { x: -9, y: -12, w: 7, h: 12, c: 'dark', tag: 'legL' },
-      { x: 2, y: -12, w: 7, h: 12, c: 'dark', tag: 'legR' },
-      { x: -11, y: -34, w: 22, h: 22, c: 'body', tag: 'torso' },
-      { x: -22, y: -33, w: 11, h: 19, c: 0x83add0, tag: 'armL' },
-      { x: 11, y: -33, w: 11, h: 19, c: 0x83add0, tag: 'armR' },
-      { x: -8, y: -46, w: 16, h: 12, c: 0xd6eafa, tag: 'head' },
-      { x: -10, y: -51, w: 20, h: 8, c: 0xd9edf9, tag: 'hair' },
-      { x: -28, y: -50, w: 3, h: 45, c: 0x638eae, tag: 'weapon' },
-      { x: -31, y: -55, w: 9, h: 10, c: 'accent', tag: 'weapon' },
-      { x: -4, y: -42, w: 3, h: 2, c: 'accent', tag: 'eye' },
-      { x: 2, y: -42, w: 3, h: 2, c: 'accent', tag: 'eye' },
+      // long silver-white hair, hanging behind the shoulders
+      { x: -14, y: -64, w: 6, h: 28, c: 0xe6eef5, tag: 'hair', z: -1 },
+      { x: 8, y: -64, w: 6, h: 28, c: 0xe6eef5, tag: 'hair', z: -1 },
+      // dark boots under the hem
+      { x: -10, y: -10, w: 8, h: 10, c: 0x2e4763, tag: 'legL' },
+      { x: 2, y: -10, w: 8, h: 10, c: 0x2e4763, tag: 'legR' },
+      // robe: flaring hem, main skirt, then the chest layer
+      { x: -18, y: -22, w: 36, h: 14, c: 0x6f97b8, tag: 'torso' },
+      { x: -15, y: -44, w: 30, h: 24, c: 0x7fa8c9, tag: 'torso' },
+      // lighter inner tabard — carries the embroidered snowflake
+      { x: -6, y: -50, w: 12, h: 40, c: 0xc3dcee, tag: 'torso' },
+      { x: -13, y: -56, w: 26, h: 14, c: 0x7fa8c9, tag: 'torso' },
+      // wide bell sleeves
+      { x: -24, y: -52, w: 13, h: 24, c: 0x6f97b8, tag: 'armL' },
+      { x: 11, y: -52, w: 13, h: 24, c: 0x6f97b8, tag: 'armR' },
+      // mantle collar with frost trim
+      { x: -13, y: -58, w: 26, h: 6, c: 0xc3dcee, tag: 'torso' },
+      // raised hood over a shadowed face
+      { x: -13, y: -72, w: 26, h: 18, c: 0x6f97b8, tag: 'head' },
+      { x: -8, y: -68, w: 16, h: 12, c: 0xcfe6f6, tag: 'head' },
+      { x: -5, y: -64, w: 3, h: 2, c: 'accent', tag: 'eye' },
+      { x: 2, y: -64, w: 3, h: 2, c: 'accent', tag: 'eye' },
+      // tall staff: twisted silver shaft under a faceted crystal
+      { x: -27, y: -76, w: 4, h: 68, c: 0x8fa9c4, tag: 'weapon' },
+      { x: -31, y: -82, w: 12, h: 13, c: 'accent', tag: 'weapon' },
     ],
     details: [
-      { x: -9, y: -33, w: 18, h: 3, c: 0xe0f4ff }, { x: -6, y: -28, w: 12, h: 2, c: 0x5d86aa },
-      { x: -3, y: -32, w: 6, h: 16, c: 0x628cb0 }, { x: -2, y: -30, w: 4, h: 12, c: 0xb7e9f5 },
-      { x: -19, y: -29, w: 5, h: 2, c: 0xc8e8fa }, { x: 14, y: -29, w: 5, h: 2, c: 0xc8e8fa },
-      { x: -8, y: -47, w: 5, h: 2, c: 0xffffff }, { x: 3, y: -47, w: 5, h: 2, c: 0xffffff },
-      { x: -30, y: -54, w: 7, h: 3, c: 0xe2fbff }, { x: -29, y: -58, w: 4, h: 4, c: 0xffffff },
-      { x: -8, y: -14, w: 6, h: 2, c: 0xc7e6f6 }, { x: 3, y: -14, w: 6, h: 2, c: 0xc7e6f6 },
+      // sash over the robe seam, with a crystal clasp
+      { x: -14, y: -35, w: 28, h: 2, c: 0x5d86aa },
+      { x: -13, y: -33, w: 26, h: 3, c: 0x456b91 },
+      { x: -3, y: -36, w: 6, h: 5, c: 0x9ff4ff },
+      // hood inner rim and hair sheen
+      { x: -13, y: -72, w: 26, h: 3, c: 0xdff2ff },
+      { x: -13, y: -60, w: 3, h: 20, c: 0xffffff },
+      { x: 10, y: -60, w: 3, h: 20, c: 0xffffff },
+      // crystal facets — tagged to the staff so they stay on the weapon
+      { x: -29, y: -80, w: 3, h: 9, c: 0xffffff, tag: 'weapon' },
+      { x: -24, y: -78, w: 3, h: 7, c: 0xdff7ff, tag: 'weapon' },
+      { x: -26, y: -68, w: 2, h: 6, c: 0xc9dcec, tag: 'weapon' },
     ],
   },
 
   // ── Golden Knight (hero) — image/character/hero/1.png
+  // Baked at 48x68 and rendered 1:1: helm slits, pauldron lames, the kite
+  // shield's crest and the sword's fuller all need real pixels to exist.
   knight: {
-    w: 34, h: 48,
+    w: 48, h: 68,
+    signature: 'knight',
+    poseAmp: 1.5,
     pal: { body: 0xffc95c, dark: 0xc99433, accent: 0xe8eef7, line: 0x4a3410 },
     parts: [
-      { x: -12, y: -40, w: 24, h: 30, c: 0x4a7ad4, tag: 'cape', z: -1 },
-      { x: -11, y: -16, w: 9, h: 16, c: 'dark', tag: 'legL' },
-      { x: 2, y: -16, w: 9, h: 16, c: 'dark', tag: 'legR' },
-      { x: -13, y: -38, w: 26, h: 22, c: 'body', tag: 'torso' },
-      { x: -9, y: -34, w: 18, h: 5, c: 'accent', tag: 'trim' },
-      { x: -20, y: -36, w: 8, h: 18, c: 'body', tag: 'armL' },
-      { x: -24, y: -38, w: 10, h: 22, c: 'accent', tag: 'shield' },
-      { x: 12, y: -36, w: 7, h: 16, c: 'body', tag: 'armR' },
-      { x: -9, y: -50, w: 18, h: 12, c: 'body', tag: 'head' },
-      { x: -6, y: -46, w: 12, h: 4, c: 'line', tag: 'visor' },
-      { x: -4, y: -58, w: 8, h: 8, c: 0xe0453f, tag: 'plume' },
-      { x: 17, y: -46, w: 5, h: 32, c: 'accent', tag: 'weapon' }, // sword
-      { x: 14, y: -18, w: 11, h: 4, c: 'dark', tag: 'weapon' }, // crossguard
+      // blue cape behind everything
+      { x: -16, y: -56, w: 32, h: 44, c: 0x3a63b4, tag: 'cape', z: -1 },
+      // sabatons, greaves, poleyn knee cops, cuisses
+      { x: -14, y: -6, w: 12, h: 6, c: 'dark', tag: 'legL' },
+      { x: 3, y: -6, w: 12, h: 6, c: 'dark', tag: 'legR' },
+      { x: -13, y: -20, w: 10, h: 15, c: 0xd8a441, tag: 'legL' },
+      { x: 4, y: -20, w: 10, h: 15, c: 0xd8a441, tag: 'legR' },
+      { x: -14, y: -24, w: 11, h: 6, c: 'body', tag: 'legL' },
+      { x: 4, y: -24, w: 11, h: 6, c: 'body', tag: 'legR' },
+      // blue tabard tail under the chainmail skirt
+      { x: -8, y: -34, w: 16, h: 18, c: 0x2c4f95, tag: 'torso' },
+      // chainmail skirt
+      { x: -16, y: -38, w: 32, h: 12, c: 0x8f96a4, tag: 'torso' },
+      // leather belt
+      { x: -17, y: -42, w: 34, h: 5, c: 0x6b4a19, tag: 'belt' },
+      // gold cuirass with a raised centre ridge
+      { x: -18, y: -60, w: 36, h: 20, c: 'body', tag: 'torso' },
+      { x: -4, y: -60, w: 8, h: 20, c: 0xffe6a0, tag: 'torso' },
+      // gorget
+      { x: -12, y: -64, w: 24, h: 6, c: 0xd8a441, tag: 'torso' },
+      // two-lame pauldrons
+      { x: -28, y: -62, w: 13, h: 9, c: 'body', tag: 'armL' },
+      { x: -27, y: -54, w: 11, h: 7, c: 0xd8a441, tag: 'armL' },
+      { x: 15, y: -62, w: 13, h: 9, c: 'body', tag: 'armR' },
+      { x: 16, y: -54, w: 11, h: 7, c: 0xd8a441, tag: 'armR' },
+      // upper arms
+      { x: -25, y: -50, w: 9, h: 18, c: 0xd8a441, tag: 'armL' },
+      { x: 17, y: -50, w: 9, h: 18, c: 0xd8a441, tag: 'armR' },
+      // large blue kite shield on the leading arm
+      { x: -34, y: -56, w: 16, h: 34, c: 0x2c4f95, tag: 'shield' },
+      { x: -32, y: -22, w: 12, h: 7, c: 0x2c4f95, tag: 'shield' },
+      // helm: skull, cheek guards, T-slot visor
+      { x: -13, y: -80, w: 26, h: 18, c: 'body', tag: 'head' },
+      { x: -13, y: -70, w: 6, h: 8, c: 0xd8a441, tag: 'head' },
+      { x: 7, y: -70, w: 6, h: 8, c: 0xd8a441, tag: 'head' },
+      { x: -2, y: -78, w: 4, h: 14, c: 'line', tag: 'visor' },
+      { x: -10, y: -72, w: 20, h: 4, c: 'line', tag: 'visor' },
+      // crimson horsehair plume
+      { x: -5, y: -90, w: 10, h: 11, c: 0xe0453f, tag: 'plume' },
+      { x: -3, y: -94, w: 6, h: 5, c: 0xc0302f, tag: 'plume' },
+      // broadsword: blade, crossguard quillons, wrapped grip, pommel
+      { x: 26, y: -74, w: 7, h: 46, c: 'accent', tag: 'weapon' },
+      { x: 21, y: -30, w: 17, h: 5, c: 'body', tag: 'weapon' },
+      { x: 27, y: -25, w: 5, h: 10, c: 0x6b4a19, tag: 'weapon' },
+      { x: 26, y: -16, w: 7, h: 5, c: 'body', tag: 'weapon' },
     ],
-    // Derived from hero/1: layered gold plate, blue enamel, chainmail and a
-    // lion-marked shield replace the former simple yellow rectangles.
     details: [
-      { x: -10, y: -37, w: 20, h: 3, c: 0xffe6a0 }, { x: -8, y: -29, w: 16, h: 2, c: 0xe3a93f },
-      { x: -2, y: -35, w: 3, h: 16, c: 0xe0a53a }, { x: -11, y: -18, w: 8, h: 3, c: 0xe8eef7 },
-      { x: 3, y: -18, w: 8, h: 3, c: 0xe8eef7 }, { x: -7, y: -48, w: 14, h: 2, c: 0xffe6a0 },
-      { x: -5, y: -45, w: 10, h: 2, c: 0x6b4a19 }, { x: -20, y: -31, w: 5, h: 3, c: 0x4a7ad4 },
-      { x: -22, y: -27, w: 6, h: 3, c: 0xe8c45a }, { x: -21, y: -23, w: 4, h: 3, c: 0xe8c45a },
-      { x: -11, y: -39, w: 3, h: 3, c: 0xffffff }, { x: 15, y: -43, w: 3, h: 23, c: 0xffffff },
-      // Cape folds, helmet rivets and armour seams turn the boss silhouette
-      // into the layered gold-and-blue figure from the reference sheet.
-      { x: -12, y: -39, w: 4, h: 18, c: 0x3158a7 }, { x: -7, y: -37, w: 3, h: 20, c: 0x234789 },
-      { x: 5, y: -38, w: 3, h: 20, c: 0x3158a7 }, { x: 9, y: -36, w: 3, h: 17, c: 0x19366f },
-      { x: -11, y: -18, w: 5, h: 2, c: 0x5274c7 }, { x: 6, y: -18, w: 5, h: 2, c: 0x5274c7 },
-      { x: -8, y: -51, w: 4, h: 2, c: 0xe2a93a }, { x: 4, y: -51, w: 4, h: 2, c: 0xe2a93a },
-      { x: -7, y: -43, w: 2, h: 2, c: 0xfff1b7 }, { x: 5, y: -43, w: 2, h: 2, c: 0xfff1b7 },
-      { x: -9, y: -26, w: 4, h: 2, c: 0xffd978 }, { x: 5, y: -26, w: 4, h: 2, c: 0xffd978 },
-      { x: -8, y: -22, w: 3, h: 2, c: 0xb87e26 }, { x: 5, y: -22, w: 3, h: 2, c: 0xb87e26 },
-      // Dithered chainmail links below the breastplate.
-      { x: -9, y: -15, w: 3, h: 2, c: 0xc4cad4 }, { x: -3, y: -15, w: 3, h: 2, c: 0x6f7786 },
-      { x: 3, y: -15, w: 3, h: 2, c: 0xc4cad4 }, { x: -6, y: -12, w: 3, h: 2, c: 0x6f7786 },
-      { x: 0, y: -12, w: 3, h: 2, c: 0xc4cad4 }, { x: 6, y: -12, w: 3, h: 2, c: 0x6f7786 },
-      // Blue enamel shield, gold rim and a compact lion-shaped crest.
-      { x: -23, y: -35, w: 2, h: 17, c: 0xe7c25c }, { x: -16, y: -35, w: 2, h: 17, c: 0xe7c25c },
-      { x: -21, y: -30, w: 5, h: 2, c: 0x183b80 }, { x: -20, y: -27, w: 3, h: 5, c: 0xf1c951 },
-      { x: -18, y: -25, w: 3, h: 2, c: 0xf1c951 }, { x: -19, y: -21, w: 2, h: 2, c: 0xf1c951 },
-      // Blade fuller and lit crossguard preserve the weapon at small scale.
-      { x: 18, y: -45, w: 2, h: 22, c: 0xb9d3ee }, { x: 13, y: -19, w: 13, h: 2, c: 0xf0d084 },
+      // cuirass edge highlight and the blue enamel medallion in the centre ridge
+      { x: -18, y: -60, w: 36, h: 2, c: 0xfff1b7, tag: 'torso' },
+      { x: -5, y: -54, w: 10, h: 10, c: 0x2c4f95, tag: 'torso' },
+      { x: -3, y: -52, w: 6, h: 6, c: 0x8fb6ee, tag: 'torso' },
+      // gold belt buckle
+      { x: -4, y: -42, w: 8, h: 5, c: 0xf1c951, tag: 'belt' },
+      // shield rim + boss — tagged so they ride the shield arm
+      { x: -34, y: -56, w: 16, h: 3, c: 0xe7c25c, tag: 'shield' },
+      { x: -34, y: -56, w: 3, h: 34, c: 0xe7c25c, tag: 'shield' },
+      { x: -21, y: -56, w: 3, h: 34, c: 0xe7c25c, tag: 'shield' },
+      { x: -34, y: -25, w: 16, h: 3, c: 0xe7c25c, tag: 'shield' },
+      // lion rampant crest, tagged to the shield
+      { x: -29, y: -48, w: 3, h: 10, c: 0xf1c951, tag: 'shield' },
+      { x: -26, y: -50, w: 4, h: 4, c: 0xf1c951, tag: 'shield' },
+      { x: -24, y: -46, w: 4, h: 8, c: 0xf1c951, tag: 'shield' },
+      { x: -30, y: -42, w: 3, h: 3, c: 0xf1c951, tag: 'shield' },
+      { x: -22, y: -38, w: 3, h: 4, c: 0xf1c951, tag: 'shield' },
+      // blade fuller and lit edge — ride the sword arm
+      { x: 29, y: -72, w: 3, h: 42, c: 0xb9d3ee, tag: 'weapon' },
+      { x: 26, y: -72, w: 2, h: 42, c: 0xffffff, tag: 'weapon' },
+      { x: 21, y: -30, w: 17, h: 2, c: 0xfff1b7, tag: 'weapon' },
+      // helm crown highlight
+      { x: -13, y: -80, w: 26, h: 3, c: 0xffe6a0, tag: 'head' },
     ],
   },
 };
@@ -395,6 +449,10 @@ function poseFor(state, i, n, unit) {
       break;
   }
 
+  // Absolute pixel amplitudes read as less motion on a taller body, so heroes
+  // opt into a larger swing via `poseAmp`. placePart re-snaps to the grid.
+  const amp = unit.poseAmp ?? 1;
+  if (amp !== 1) { pose.bob *= amp; pose.lean *= amp; pose.arm *= amp; }
   if (unit.h < 30) pose.bob = Math.round(pose.bob / 2); // small units bob less
   return pose;
 }
@@ -473,7 +531,7 @@ function drawFrame(g, unit, pose) {
   // adding another generic rectangle to every silhouette.  They are deliberately
   // baked after the construction seams, so each creature keeps its own material
   // language even in the middle of a busy fight.
-  drawSignature(g, unit.signature, ox, oy, pose.alpha);
+  drawSignature(g, unit, ox, oy, pose.alpha);
 
   // pass 3 — charge glow above the head during windup / on the attack snap
   if (pose.charge > 0) {
@@ -485,13 +543,27 @@ function drawFrame(g, unit, pose) {
   return { W, H };
 }
 
-/** Small, species-specific pixel clusters derived from the supplied sheets. */
-function drawSignature(g, signature, ox, oy, alpha) {
+/**
+ * Small, species-specific pixel clusters derived from the supplied sheets.
+ *
+ * These are drawn *statically* — only `alpha` is applied, not the pose — so this
+ * is the right home for surface grain (chainmail, robe shading, cape folds) that
+ * sits on the body's least-mobile areas, and for elements that should read as
+ * floating rather than welded on. Detail that has to track a swinging arm or
+ * weapon belongs in `details`, which runs through `placePart`.
+ */
+function drawSignature(g, unit, ox, oy, alpha) {
+  const signature = unit.signature;
   if (!signature) return;
   const rect = (x, y, w, h, color, a = 1) => { g.fillStyle(color, alpha * a); g.fillRect(snap(ox + x), snap(oy + y), w, h); };
   const line = (x, y, n, dx, dy, color, a = 1) => {
     for (let i = 0; i < n; i++) rect(x + dx * i, y + dy * i, P, P, color, a);
   };
+  // Bake-time grain, in frame coordinates. The Bayer matrix is indexed in world
+  // block coords, so adjacent calls interlock instead of showing a seam.
+  const grain = (x, y, w, h, color, density, a = 1) => dither(g, snap(ox + x), snap(oy + y), w, h, color, density, alpha * a);
+  const rampV = (x, y, w, h, color, from, to, power = 1, a = 1) => ditherRampV(g, snap(ox + x), snap(oy + y), w, h, color, from, to, power, alpha * a);
+  const fleck = (x, y, w, h, color, count, seed, a = 1) => speckle(g, snap(ox + x), snap(oy + y), w, h, color, count, rng(seed), alpha * a);
 
   switch (signature) {
     case 'golem':
@@ -541,12 +613,59 @@ function drawSignature(g, signature, ox, oy, alpha) {
       rect(-14, -18, 3, 2, 0xe3fbff, .7); rect(11, -18, 3, 2, 0xe3fbff, .7);
       break;
     case 'iceMage':
-      // Silver hair, embroidered snowflake tabard and a live ice staff.
-      line(-9, -49, 8, 2, 0, 0xf4fbff, .9); line(-10, -44, 4, 0, 3, 0xb7d8ee, .85);
-      line(8, -44, 4, 0, 3, 0xb7d8ee, .85); rect(-3, -25, 6, 2, 0xe8fbff);
-      rect(-1, -22, 2, 8, 0x75abd0); rect(-5, -20, 10, 2, 0x5e8eb2, .8);
-      rect(-27, -51, 4, 4, 0xe1fbff); rect(-30, -48, 2, 3, 0x76e5ff); rect(-24, -56, 2, 3, 0x76e5ff);
-      rect(15, -39, 3, 5, 0xcff4ff, .8); rect(-20, -39, 3, 5, 0xcff4ff, .8);
+      // Robe shading: the outer layer deepens toward the hem, and the flare
+      // catches a little cold rim light off the floor.
+      rampV(-15, -46, 30, 26, 0x456b91, 0, 0.55, 1.5);
+      rampV(-18, -22, 36, 14, 0x2f4f6f, 0.1, 0.6, 1.2);
+      grain(-18, -14, 36, 4, 0xbfe3f6, 0.35);
+      // Frost crust along the mantle collar and hood rim.
+      fleck(-13, -60, 26, 6, 0xffffff, 14, 0x51ce, 0.9);
+      fleck(-12, -74, 24, 4, 0xe8f8ff, 9, 0x77a1, 0.8);
+      // Embroidered snowflake on the inner tabard — six arms plus a bright hub.
+      rect(-1, -48, 2, 18, 0x8fd6ef, 0.95);
+      rect(-6, -40, 12, 2, 0x8fd6ef, 0.95);
+      line(-5, -45, 5, 2, 2, 0x8fd6ef, 0.9);
+      line(4, -45, 5, -2, 2, 0x8fd6ef, 0.9);
+      rect(-2, -41, 4, 4, 0xffffff);
+      rect(-1, -47, 2, 2, 0xe8fbff); rect(-1, -32, 2, 2, 0xe8fbff);
+      // Silver hair strands catching the light.
+      line(-13, -62, 9, 0, 3, 0xffffff, 0.75);
+      line(11, -62, 9, 0, 3, 0xf4fbff, 0.7);
+      // Staff crystal: an inner core that reads as lit from within.
+      rect(-27, -78, 4, 6, 0xffffff);
+      rect(-28, -75, 6, 2, 0xdff7ff, 0.9);
+      grain(-31, -82, 12, 13, 0xffffff, 0.28, 0.85);
+      // Three ice shards orbiting the mage, faint so they read as floating.
+      rect(-36, -68, 4, 4, 0x9ff4ff, 0.5); rect(-35, -67, 2, 2, 0xffffff, 0.6);
+      rect(16, -60, 4, 4, 0x9ff4ff, 0.45); rect(17, -59, 2, 2, 0xffffff, 0.55);
+      rect(-8, -84, 4, 4, 0x9ff4ff, 0.4); rect(-7, -83, 2, 2, 0xffffff, 0.5);
+      break;
+    case 'knight':
+      // Gold plate: lit across the top of the cuirass, shadowed underneath.
+      rampV(-18, -52, 36, 12, 0xb8862c, 0, 0.6, 1.5);
+      grain(-18, -60, 36, 4, 0xfff1b7, 0.3);
+      // Dithered chainmail, kept clear of the blue tabard running down the middle.
+      grain(-16, -38, 8, 12, 0xb0b8c6, 0.5);
+      grain(8, -38, 8, 12, 0xb0b8c6, 0.5);
+      grain(-16, -38, 8, 12, 0x5b6376, 0.25);
+      grain(8, -38, 8, 12, 0x5b6376, 0.25);
+      // Cape folds, only where the drape clears the body on either side.
+      rampV(-16, -54, 4, 42, 0x1f3d76, 0.2, 0.7, 1.3);
+      rampV(12, -54, 4, 42, 0x1f3d76, 0.2, 0.7, 1.3);
+      line(-15, -50, 8, 0, 5, 0x5c86d8, 0.6);
+      line(13, -50, 8, 0, 5, 0x5c86d8, 0.6);
+      // Pauldron lame edges and a scuffed rivet line across the cuirass.
+      line(-27, -56, 5, 2, 0, 0xfff1b7, 0.85);
+      line(17, -56, 5, 2, 0, 0xfff1b7, 0.85);
+      fleck(-16, -50, 32, 8, 0xffe6a0, 12, 0x9a17, 0.7);
+      // Visor: a cold glint deep in the T-slot rather than visible eyes.
+      rect(-8, -71, 3, 2, 0x9ff4ff, 0.85); rect(5, -71, 3, 2, 0x9ff4ff, 0.85);
+      rect(-1, -76, 2, 3, 0x6fd8ee, 0.5);
+      // Horsehair plume strands.
+      line(-5, -88, 5, 0, 2, 0xf4726a, 0.8);
+      line(3, -88, 5, 0, 2, 0x9e2725, 0.8);
+      // Greave and sabaton highlights.
+      rect(-13, -18, 3, 12, 0xffe6a0, 0.7); rect(10, -18, 3, 12, 0xffe6a0, 0.7);
       break;
     default:
       break;

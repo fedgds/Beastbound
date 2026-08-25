@@ -43,8 +43,16 @@ export default class AudioSystem {
       bloom: [610, 0.18, 'sine', 0.028, 760],
       shieldBash: [160, 0.18, 'square', 0.065, 90],
       whirlwind: [290, 0.22, 'sawtooth', 0.055, 610],
+      /** Per-revolution swish — deliberately light so three in a row don't grate. */
+      whirlwindTick: [330, 0.08, 'sawtooth', 0.028, 520],
       valor: [420, 0.35, 'sine', 0.055, 760],
       judgment: [95, 0.5, 'sawtooth', 0.075, 38],
+      // Ice Mage kit: all rising or crystalline, so its half of the tower has a
+      // different timbre from the Knight's blunt, falling hits.
+      iceWall: [300, 0.32, 'triangle', 0.055, 660],
+      frostNova: [880, 0.26, 'sine', 0.055, 190],
+      glacialLance: [1020, 0.2, 'square', 0.05, 400],
+      blizzard: [240, 0.42, 'triangle', 0.06, 720],
       bombard: [118, 0.25, 'sawtooth', 0.07, 48],
       lanceCharge: [145, 0.2, 'sawtooth', 0.06, 72],
       phaseStrike: [690, 0.25, 'sine', 0.05, 310],

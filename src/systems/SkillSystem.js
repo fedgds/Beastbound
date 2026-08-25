@@ -11,7 +11,7 @@
 
 import { COLORS, DEPTH, TELEGRAPH_KIND } from '../config.js';
 import { ROLE } from '../data/monsters.js';
-import { P, pxArc, pxGroundRing, pxLine, snap } from '../art/PixelDraw.js';
+import { GROUND_SQUASH, P, pxArc, pxDisc, pxGroundRing, pxLine, pxStar, snap } from '../art/PixelDraw.js';
 
 const BLOOM_INTERVAL = 2.0;
 const BLOOM_HEAL = 6;
@@ -26,6 +26,15 @@ export default class SkillSystem {
     this.scene = scene;
     this.log = [];
     this.blizzards = [];
+    // Persistent, dt-driven hero effects. Each is an array of live instances
+    // ticked from update(dt) off scene.clock, drawn per frame into its own
+    // Graphics, and cleared in reset() — never a tween or delayedCall, which
+    // ride real RAF and are invisible to the game.step harness (and hitstop).
+    this.spins = [];
+    this.auras = [];
+    this.iceWalls = [];
+    this.novas = [];
+    this.lances = [];
   }
 
   // ═══ monster skill 2 — "on summon" triggers ══════════════════════════════
@@ -78,11 +87,27 @@ export default class SkillSystem {
       this.#tickCroak(m, hero);
     }
     this.#tickBlizzards(dt);
+    this.#tickSpins(dt);
+    this.#tickAuras(dt);
+    this.#tickIceWalls(dt);
+    this.#tickNovas(dt);
+    this.#tickLances(dt);
   }
 
   reset() {
-    for (const storm of this.blizzards) storm.gfx?.destroy();
+    // One sweep over every live-effect array: each entry owns its Graphics (a
+    // couple own a second one in the air layer), and nothing may outlive a floor.
+    for (const list of [
+      this.blizzards, this.spins, this.auras, this.iceWalls, this.novas, this.lances,
+    ]) {
+      for (const e of list) { e.gfx?.destroy(); e.gfxAir?.destroy(); }
+    }
     this.blizzards = [];
+    this.spins = [];
+    this.auras = [];
+    this.iceWalls = [];
+    this.novas = [];
+    this.lances = [];
   }
 
   /** Tank passive: heavy damage reduction once badly hurt. */
@@ -371,11 +396,14 @@ export default class SkillSystem {
     switch (eff.type) {
       case 'coneDamage': {
         const y = hero.y - 10;
+        // Resolve on the facing the telegraph was *drawn* with, not the live one
+        // — the drawn shape is the contract the player read.
+        const facing = ctx.facing ?? hero.facing;
         const victims = this.scene.combat.coneDamage(
-          hero, hero.x, y, hero.facing, eff.radius, eff.arc, dmg,
+          hero, hero.x, y, facing, eff.radius, eff.arc, dmg,
           { knockback: eff.knockback },
         );
-        this.scene.fx.slash(hero.x + hero.facing * 20, y, hero.facing, COLORS.tgDamage);
+        this.scene.fx.slash(hero.x + facing * 20, y, facing, COLORS.tgDamage);
         this.scene.fx.impact({ color: COLORS.tgDamage, shake: 0.01, flash: 0.25, stop: 90 });
         this.#report(skill, victims.length);
         break;
@@ -411,6 +439,15 @@ export default class SkillSystem {
         this.scene.fx.ring(hero.x, hero.y - 10, 110, COLORS.tgBuff, 520, 4);
         this.scene.fx.screenFlash(COLORS.tgBuff, 0.22, 160);
         this.scene.fx.popText(hero.x, hero.y - 80, 'ENRAGED', COLORS.tgBuff);
+        // A buff that lasts the rest of the fight needs a standing visual, not a
+        // single ring the player may have blinked through.
+        if (eff.aura) this.#startAura(hero, eff);
+        break;
+      }
+
+      /** Three revolutions that drag the crowd in, then throw it. */
+      case 'spinAttack': {
+        this.#startSpin(hero, skill, eff);
         break;
       }
 
@@ -418,15 +455,57 @@ export default class SkillSystem {
         hero.iceWallHp = eff.shield;
         hero.iceWallUntil = this.scene.clock + eff.duration;
         hero.setBarrier(true);
-        this.scene.fx.iceWall(hero.x, hero.y - hero.spriteHeight * 0.42, hero.facing, eff.duration);
+        // Expiry is driven by #tickIceWalls against scene.clock, so the wall
+        // freezes with the rest of the fight instead of running on wall time.
+        this.#startIceWall(hero, eff);
         this.scene.fx.skillBurst(hero.x, hero.y - hero.spriteHeight * 0.5, 0xa9f5ff, 'rune');
         this.scene.fx.popText(hero.x, hero.y - hero.spriteHeight - 12, `ICE WALL · ${eff.shield}`, 0xa9f5ff);
-        this.scene.time.delayedCall(eff.duration * 1000, () => {
-          if (hero.iceWallUntil <= this.scene.clock + 0.02) {
-            hero.iceWallHp = 0;
-            hero.setBarrier(false);
-          }
+        break;
+      }
+
+      /** Point-blank freeze: the Mage's answer to melee that closed the gap. */
+      case 'frostNova': {
+        const y = hero.y - 10;
+        const victims = this.scene.combat.monstersInCircle(hero.x, y, eff.radius);
+        for (const m of victims) {
+          this.scene.combat.strike(hero, m, {
+            mult: eff.mult, color: 0xa9f5ff, knockback: eff.knockback,
+          });
+          m.applySlow(eff.slowMult, eff.slowSeconds);
+          m.applyStun(eff.stunSeconds);
+        }
+        this.novas.push({
+          x: hero.x, y, r: eff.radius, life: eff.grow ?? 0.5, age: 0,
+          gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
         });
+        this.scene.fx.scorch(hero.x, hero.y, eff.radius * 0.5, 0x8fd8ff);
+        this.scene.fx.impact({ color: 0xa9f5ff, shake: 0.009, flash: 0.24, stop: 85 });
+        this.#report(skill, victims.length);
+        break;
+      }
+
+      /** A long, thin, sidesteppable line — the sniper half of the Mage's kit. */
+      case 'lanceBeam': {
+        const y = hero.y - 14;
+        const facing = ctx.facing ?? hero.facing;
+        const victims = this.scene.combat.monstersInCone(
+          hero.x, y, facing, eff.radius, eff.arc,
+        );
+        for (const m of victims) {
+          this.scene.combat.strike(hero, m, {
+            mult: eff.mult, color: 0xa9f5ff, knockback: eff.knockback, ignoreBlock: true,
+          });
+          m.applySlow(eff.slowMult, eff.slowSeconds);
+          this.scene.fx.hitSpark(m.x, m.y - m.spriteHeight * 0.5, 0xd9fbff, 6,
+            facing < 0 ? Math.PI : 0);
+        }
+        this.lances.push({
+          x: hero.x, y, dir: facing, r: eff.radius, arc: eff.arc,
+          grow: eff.grow ?? 0.25, life: eff.life ?? 0.5, age: 0,
+          gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
+        });
+        this.scene.fx.impact({ color: 0xa9f5ff, shake: 0.011, flash: 0.26, stop: 90 });
+        this.#report(skill, victims.length);
         break;
       }
 
@@ -560,6 +639,436 @@ export default class SkillSystem {
       g.fillStyle(0xe9ffff, 0.72);
       pxLine(g, x - 4, y - 35, x + 4, y - 16);
       pxLine(g, x + 4, y - 16, x - 2, y + 5);
+    }
+  }
+
+  // ═══ persistent hero effects ═════════════════════════════════════════════
+  // Everything below follows the blizzard pattern: an entry pushed onto an
+  // array, advanced by dt off scene.clock, redrawn into its own Graphics each
+  // frame, and torn down by its own tick. No tweens, no delayedCall.
+
+  /** Nearest living monster to `unit`, or null. Used to aim walls and spins. */
+  #nearestMonster(unit) {
+    let best = null;
+    let bestD = Infinity;
+    for (const m of this.scene.monsters) {
+      if (!m.alive) continue;
+      const d = Phaser.Math.Distance.Between(unit.x, unit.y, m.x, m.y);
+      if (d < bestD) { bestD = d; best = m; }
+    }
+    return best;
+  }
+
+  // ── Whirlwind: three revolutions that drag the crowd in, then throw it ────
+  #startSpin(hero, skill, eff) {
+    this.spins.push({
+      hero,
+      skill,
+      x: hero.x,
+      y: hero.y - 10,
+      radius: eff.radius,
+      steps: eff.steps ?? [1],
+      mult: eff.mult,
+      ticks: eff.ticks ?? 3,
+      interval: eff.interval ?? 0.34,
+      pull: eff.pull ?? 0,
+      knockback: eff.knockback ?? 0,
+      spinEvery: eff.spinEvery ?? 0.09,
+      beat: 0,
+      tick: 0,          // fires the first revolution on the frame it starts
+      spinT: 0,
+      facing0: hero.facing,
+      age: 0,
+      hits: new Set(),
+      gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
+    });
+    this.scene.fx.screenFlash(COLORS.tgDamage, 0.16, 120);
+  }
+
+  #tickSpins(dt) {
+    for (const spin of [...this.spins]) {
+      const { hero } = spin;
+      spin.age += dt;
+      spin.tick -= dt;
+      spin.spinT -= dt;
+
+      // The spin follows the Knight rather than the cast point: he plants and
+      // turns, so the vortex should sit on him even if knockback nudges him.
+      if (hero.alive) { spin.x = hero.x; spin.y = hero.y - 10; }
+
+      // Mirroring the sprite sells the rotation without setAngle, which would
+      // resample the pixels off the lattice.
+      if (spin.spinT <= 0 && hero.alive) {
+        spin.spinT = spin.spinEvery;
+        hero.facing *= -1;
+      }
+
+      if (spin.tick <= 0 && spin.beat < spin.ticks) {
+        const last = spin.beat === spin.ticks - 1;
+        const r = spin.radius * (spin.steps[Math.min(spin.beat, spin.steps.length - 1)] ?? 1);
+        for (const m of this.scene.combat.monstersInCircle(spin.x, spin.y, r)) {
+          // Beats 1-2 pull inward (negative force), the last one blasts out.
+          this.scene.combat.strike(hero, m, {
+            mult: spin.mult,
+            color: COLORS.tgDamage,
+            knockback: last ? spin.knockback : spin.pull,
+          });
+          spin.hits.add(m);
+        }
+        this.scene.fx.ring(spin.x, spin.y, r, COLORS.tgDamage, 300, 3);
+        for (let i = 0; i < 4; i++) {
+          const a = spin.age * 11 + (i / 4) * Math.PI * 2;
+          this.scene.fx.hitSpark(
+            spin.x + Math.cos(a) * r, spin.y + Math.sin(a) * r * GROUND_SQUASH,
+            0xffe6a0, 3, a,
+          );
+        }
+        this.scene.audio?.playSkill(hero, last ? 'whirlwind' : 'whirlwindTick');
+        this.scene.fx.impact(last
+          ? { color: COLORS.tgDamage, shake: 0.014, flash: 0.28, stop: 100 }
+          : { color: COLORS.tgDamage, shake: 0.006, flash: 0.1, stop: 45 });
+        spin.beat += 1;
+        spin.tick = spin.interval;
+      }
+
+      spin.gfx.clear();
+      this.#drawWhirlwind(spin.gfx, spin);
+
+      if (spin.beat < spin.ticks && hero.alive) continue;
+      // tail: let the last arc finish sweeping before the graphics goes away
+      if (hero.alive && spin.tick > spin.interval - 0.18) continue;
+      hero.facing = spin.facing0;
+      this.scene.fx.scorch(spin.x, hero.y, spin.radius * 0.5);
+      this.#report(spin.skill, spin.hits.size);
+      spin.gfx.destroy();
+      this.spins = this.spins.filter((s) => s !== spin);
+    }
+  }
+
+  /** Three trailing blade arcs over a counter-rotating dust ring. */
+  #drawWhirlwind(g, spin) {
+    const x = snap(spin.x);
+    const y = snap(spin.y);
+    const a = spin.age * 11;
+    const reach = spin.radius * (spin.steps[Math.min(spin.beat, spin.steps.length - 1)] ?? 1);
+
+    // the actual damaging area, plus a tighter ring spinning the other way so
+    // the floor itself looks dragged around
+    g.fillStyle(0xffd9a0, 0.15);
+    pxGroundRing(g, x, y, reach, { dash: 6, gap: 5, rot: Math.floor(spin.age * 14) });
+    g.fillStyle(0xffb45c, 0.3);
+    pxGroundRing(g, x, y, reach * 0.55, { dash: 3, gap: 3, rot: -Math.floor(spin.age * 18) });
+
+    // each arc is a frame behind the last and slightly smaller — the pixel-art
+    // way to draw a sweep, where one arc just reads as a curve
+    for (let k = 0; k < 3; k++) {
+      const r = reach * (1 - k * 0.15);
+      const from = a - k * 0.5;
+      g.fillStyle(k === 0 ? 0xffffff : COLORS.tgDamage, 0.9 - k * 0.27);
+      pxArc(g, x, y - 10 + k * 4, r, r * GROUND_SQUASH, {
+        from, to: from + Math.PI * (0.7 - k * 0.12),
+      });
+    }
+
+    // wind streaks flung outward, riding the same clock as the blades
+    g.fillStyle(0xffe6a0, 0.5);
+    for (let i = 0; i < 6; i++) {
+      const wa = a * 0.8 + (i / 6) * Math.PI * 2;
+      const inner = reach * 0.45;
+      pxLine(g,
+        x + Math.cos(wa) * inner, y - 8 + Math.sin(wa) * inner * GROUND_SQUASH,
+        x + Math.cos(wa) * reach, y - 8 + Math.sin(wa) * reach * GROUND_SQUASH);
+    }
+  }
+
+  // ── Call of Valor: a standing aura, not a single ring ────────────────────
+  #startAura(hero, eff) {
+    this.auras.push({
+      hero,
+      left: eff.duration ?? 999,
+      regenPct: eff.regenPct ?? 0,
+      regenEvery: eff.regenEvery ?? 2,
+      regen: eff.regenEvery ?? 2,
+      age: 0,
+      gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphGround),
+      gfxAir: this.scene.add.graphics().setDepth(DEPTH.unitFx),
+    });
+  }
+
+  #tickAuras(dt) {
+    for (const aura of [...this.auras]) {
+      const { hero } = aura;
+      aura.age += dt;
+      aura.left -= dt;
+
+      if (aura.regenPct > 0) {
+        aura.regen -= dt;
+        if (aura.regen <= 0) {
+          aura.regen = aura.regenEvery;
+          if (hero.alive) hero.heal(Math.round(hero.maxHp * aura.regenPct));
+        }
+      }
+
+      if (hero.alive && aura.left > 0) {
+        this.#drawValorAura(aura.gfx, aura.gfxAir, aura);
+        continue;
+      }
+      aura.gfx.destroy();
+      aura.gfxAir.destroy();
+      this.auras = this.auras.filter((a) => a !== aura);
+    }
+  }
+
+  /** Rotating gold ground ring, rising motes and a pair of pixel banners. */
+  #drawValorAura(g, air, aura) {
+    const { hero } = aura;
+    const x = snap(hero.x);
+    const y = snap(hero.y);
+    const pulse = 0.5 + 0.5 * Math.sin(aura.age * 3.2);
+
+    g.clear();
+    g.fillStyle(COLORS.tgBuff, 0.2 + pulse * 0.14);
+    pxGroundRing(g, x, y, 34, { dash: 4, gap: 3, rot: Math.floor(aura.age * 9) });
+    g.fillStyle(0xffe6a0, 0.14 + pulse * 0.1);
+    pxGroundRing(g, x, y, 47, { dash: 2, gap: 5, rot: -Math.floor(aura.age * 6) });
+
+    air.clear();
+    // six motes on independent phases: a standing flame rather than a halo
+    for (let i = 0; i < 6; i++) {
+      const ph = (aura.age * 0.55 + i / 6) % 1;
+      const mx = x + Math.cos(i * 2.4 + aura.age * 0.8) * (13 + (i % 3) * 8);
+      const my = y - 4 - ph * 54;
+      air.fillStyle(i % 2 ? COLORS.tgBuff : 0xfff1b7, (1 - ph) * 0.85);
+      air.fillRect(snap(mx), snap(my), P * (i % 3 === 0 ? 2 : 1), P);
+    }
+    // twin banners at the shoulders, rippling on the same clock
+    const top = y - hero.spriteHeight * 0.92;
+    for (const side of [-1, 1]) {
+      for (let s = 0; s < 6; s++) {
+        const w = (6 - s) * P;
+        const sway = Math.round(Math.sin(aura.age * 4 + s * 0.7 + side) * 2) * P;
+        air.fillStyle(s % 2 ? 0xc9962c : COLORS.tgBuff, 0.72);
+        air.fillRect(snap(hero.x + side * 27 + sway - w / 2), snap(top + s * 6), w, P * 2);
+      }
+    }
+  }
+
+  // ── Ice Wall: a real barricade the shield's state is legible on ──────────
+  #startIceWall(hero, eff) {
+    const threat = this.#nearestMonster(hero);
+    const a = threat
+      ? Math.atan2(threat.y - hero.y, threat.x - hero.x)
+      : (hero.facing < 0 ? Math.PI : 0);
+    // pillars stand between the Mage and the pack, spread along the line
+    // perpendicular to the threat so they actually block the approach
+    const cx = hero.x + Math.cos(a) * 40;
+    const cy = hero.y + Math.sin(a) * 40 * GROUND_SQUASH;
+    const nx = -Math.sin(a);
+    const ny = Math.cos(a) * GROUND_SQUASH;
+    const count = eff.segments ?? 3;
+
+    const segments = [];
+    for (let i = 0; i < count; i++) {
+      const t = (i - (count - 1) / 2) * 30;
+      segments.push({
+        x: cx + nx * t,
+        y: cy + ny * t,
+        w: 14 - Math.abs(i - (count - 1) / 2) * 2,
+        h: 40 - Math.abs(i - (count - 1) / 2) * 7,
+      });
+      this.scene.fx.skillBurst(cx + nx * t, cy + ny * t, 0xa9f5ff, 'rune');
+    }
+
+    this.iceWalls.push({
+      hero,
+      segments,
+      shield: eff.shield,
+      left: eff.duration,
+      chill: eff.chillEvery ?? 0.7,
+      chillEvery: eff.chillEvery ?? 0.7,
+      chillRadius: eff.chillRadius ?? 46,
+      chillMult: eff.chillMult ?? 0.2,
+      slowMult: eff.slowMult ?? 0.6,
+      slowSeconds: eff.slowSeconds ?? 1.1,
+      shatterMult: eff.shatterMult ?? 0.9,
+      shatterRadius: eff.shatterRadius ?? 84,
+      stage: 0,
+      age: 0,
+      gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
+    });
+  }
+
+  #tickIceWalls(dt) {
+    for (const wall of [...this.iceWalls]) {
+      const { hero } = wall;
+      wall.age += dt;
+      wall.left -= dt;
+      wall.chill -= dt;
+
+      // The pillars carry the shield's remaining health as crack stages, so the
+      // number on the Mage and the thing on the floor never disagree.
+      const pct = Phaser.Math.Clamp(hero.iceWallHp / wall.shield, 0, 1);
+      wall.stage = Math.min(2, Math.floor((1 - pct) * 3));
+
+      if (wall.chill <= 0) {
+        wall.chill = wall.chillEvery;
+        const chilled = new Set();
+        for (const seg of wall.segments) {
+          for (const m of this.scene.combat.monstersInCircle(seg.x, seg.y, wall.chillRadius)) {
+            chilled.add(m);
+          }
+        }
+        for (const m of chilled) {
+          this.scene.combat.strike(hero, m, { mult: wall.chillMult, color: 0xa9f5ff });
+          m.applySlow(wall.slowMult, wall.slowSeconds);
+        }
+      }
+
+      wall.gfx.clear();
+      this.#drawIceWall(wall.gfx, wall);
+
+      const spent = hero.iceWallHp <= 0 || wall.left <= 0 || !hero.alive;
+      if (!spent) continue;
+
+      // Shatter: the barricade cashes itself in rather than fading out.
+      for (const seg of wall.segments) {
+        for (const m of this.scene.combat.monstersInCircle(seg.x, seg.y, wall.shatterRadius)) {
+          this.scene.combat.strike(hero, m, {
+            mult: wall.shatterMult, color: 0xa9f5ff, knockback: 30,
+          });
+          m.applySlow(wall.slowMult, wall.slowSeconds * 1.4);
+        }
+        this.scene.fx.ring(seg.x, seg.y, wall.shatterRadius, 0xa9f5ff, 360, 3);
+        this.scene.fx.hitSpark(seg.x, seg.y - seg.h * 0.5, 0xd9fbff, 7, -Math.PI / 2);
+        this.scene.fx.scorch(seg.x, seg.y, 12, 0x8fd8ff);
+      }
+      this.scene.fx.impact({ color: 0xa9f5ff, shake: 0.01, flash: 0.22, stop: 80 });
+      hero.iceWallHp = 0;
+      hero.iceWallUntil = 0;
+      hero.setBarrier(false);
+      wall.gfx.destroy();
+      this.iceWalls = this.iceWalls.filter((w) => w !== wall);
+    }
+  }
+
+  /** Tapered pillars on the grid — stacked rects and pxLine cracks, no AA. */
+  #drawIceWall(g, wall) {
+    const fade = wall.left < 0.6 ? Math.max(0.15, wall.left / 0.6) : 1;
+    const shimmer = 0.5 + 0.5 * Math.sin(wall.age * 4);
+
+    for (const [i, seg] of wall.segments.entries()) {
+      const x = snap(seg.x);
+      const y = snap(seg.y);
+
+      // rime bite where the pillar tore out of the floor
+      g.fillStyle(0x7fd4ef, 0.2 * fade);
+      pxDisc(g, x, y, seg.w + 8, (seg.w + 8) * GROUND_SQUASH);
+
+      // the shaft: five bands, each narrower than the last, so it tapers
+      const bands = 5;
+      for (let b = 0; b < bands; b++) {
+        const q = b / bands;
+        const bw = Math.max(P * 2, Math.round((seg.w * (1 - q * 0.6)) / P) * P);
+        const bh = Math.ceil((seg.h / bands) / P) * P;
+        g.fillStyle(b % 2 ? 0x9fdcf5 : 0xc7eeff, (0.92 - q * 0.16) * fade);
+        g.fillRect(snap(x - bw / 2), snap(y - seg.h * (q + 1 / bands)), bw, bh);
+      }
+
+      // lit edge and inner glow — the difference between ice and a grey slab
+      g.fillStyle(0xffffff, (0.55 + shimmer * 0.3) * fade);
+      g.fillRect(snap(x - seg.w / 2), snap(y - seg.h), P, snap(seg.h * 0.8));
+      g.fillStyle(0xe9ffff, 0.3 * fade);
+      g.fillRect(snap(x + seg.w / 2 - P * 2), snap(y - seg.h * 0.7), P, snap(seg.h * 0.5));
+
+      // cracks appear as the Mage's shield is spent: the wall shows its HP
+      g.fillStyle(0x2f6f92, 0.75 * fade);
+      for (let c = 0; c < wall.stage; c++) {
+        const cy = y - seg.h * (0.28 + c * 0.26);
+        const dir = (i + c) % 2 ? 1 : -1;
+        pxLine(g, x - dir * seg.w * 0.4, cy, x, cy - 5);
+        pxLine(g, x, cy - 5, x + dir * seg.w * 0.35, cy - 1);
+      }
+    }
+  }
+
+  // ── Frost Nova: an expanding ring of spikes ──────────────────────────────
+  #tickNovas(dt) {
+    for (const nova of [...this.novas]) {
+      nova.age += dt;
+      const g = nova.gfx;
+      g.clear();
+
+      const p = Math.min(1, nova.age / nova.life);
+      const r = nova.r * (0.25 + 0.75 * p);
+      const fade = 1 - p;
+      const x = snap(nova.x);
+      const y = snap(nova.y);
+
+      g.fillStyle(0xd9fbff, 0.25 + 0.5 * fade);
+      pxGroundRing(g, x, y, r, { dash: 5, gap: 3 });
+      g.fillStyle(0x8fd8ff, 0.3 * fade);
+      pxGroundRing(g, x, y, r * 0.68, { dash: 3, gap: 4, rot: Math.floor(nova.age * 10) });
+      g.fillStyle(0xa9f5ff, 0.14 * fade);
+      pxDisc(g, x, y, r * 0.9, r * 0.9 * GROUND_SQUASH, { every: 3 });
+
+      // spikes crystallise on the rim and shrink as the wave passes
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2;
+        const sx = snap(x + Math.cos(a) * r);
+        const sy = snap(y + Math.sin(a) * r * GROUND_SQUASH);
+        const arm = P * (1 + Math.round(fade * 2));
+        g.fillStyle(i % 2 ? 0xffffff : 0xa9f5ff, 0.85 * fade + 0.1);
+        pxStar(g, sx, sy, arm);
+        g.fillRect(sx - P, sy - arm * 3, P * 2, arm * 3);
+      }
+
+      if (nova.age < nova.life) continue;
+      g.destroy();
+      this.novas = this.novas.filter((n) => n !== nova);
+    }
+  }
+
+  // ── Glacial Lance: a beam that crystallises, then shatters ───────────────
+  #tickLances(dt) {
+    for (const lance of [...this.lances]) {
+      lance.age += dt;
+      const g = lance.gfx;
+      g.clear();
+
+      const grow = Math.min(1, lance.age / lance.grow);
+      const p = Math.min(1, lance.age / lance.life);
+      const fade = 1 - p * p; // holds bright while it grows, then drops fast
+      const reach = lance.r * grow;
+      const half = Phaser.Math.DegToRad(lance.arc) / 2;
+      const x = snap(lance.x);
+      const y = snap(lance.y);
+      const step = P * 4;
+
+      // the shaft, widening with distance exactly like the telegraph cone
+      for (let d = 0; d < reach; d += step) {
+        const w = Math.max(P * 2, Math.round((6 + d * Math.tan(half)) / P) * P);
+        const sx = snap(x + lance.dir * d);
+        g.fillStyle((d / step) % 2 ? 0xd9fbff : 0x8fd8ff, (0.92 - (d / lance.r) * 0.35) * fade);
+        g.fillRect(lance.dir < 0 ? sx - step : sx, snap(y - w / 2), step, w);
+      }
+      // lit spine down the middle
+      g.fillStyle(0xffffff, 0.85 * fade);
+      g.fillRect(snap(lance.dir < 0 ? x - reach : x), snap(y - P / 2), snap(reach), P);
+
+      // shards flake off the beam and drift perpendicular as it breaks up
+      for (let i = 0; i < 10; i++) {
+        const d = ((i + 1) / 11) * reach;
+        const drift = (i % 2 ? 1 : -1) * (4 + p * 26 + (i % 3) * 3);
+        g.fillStyle(i % 3 === 0 ? 0xffffff : 0xa9f5ff, 0.8 * fade);
+        g.fillRect(snap(x + lance.dir * d), snap(y + drift), P * 2, P);
+      }
+      // the staff-side flare, so the beam clearly comes from the Mage
+      g.fillStyle(0xe9ffff, 0.7 * fade);
+      pxStar(g, x, y, P * (2 + Math.round(fade * 2)));
+
+      if (lance.age < lance.life) continue;
+      g.destroy();
+      this.lances = this.lances.filter((l) => l !== lance);
     }
   }
 

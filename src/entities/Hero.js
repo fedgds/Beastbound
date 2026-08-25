@@ -19,6 +19,7 @@ export default class Hero extends Entity {
       hitRadius: def.hitRadius,
       isHero: true,
       visualScale: def.visualScale ?? 1.42,
+      shadowScale: def.shadowScale,
     });
 
     this.def = def;
