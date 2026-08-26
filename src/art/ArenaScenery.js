@@ -18,7 +18,7 @@ import {
 } from './PixelDraw.js';
 
 const COLS = Math.round(ARENA.w / TILE.w); // 28
-const ROWS = Math.round(ARENA.h / TILE.h); // 10
+const ROWS = Math.ceil(ARENA.h / TILE.h);
 
 /** The wall is divided into five bays. Pilasters split them, torches centre them. */
 const BAYS = 5;
@@ -43,13 +43,10 @@ function centred(slots, n) {
 const scratch = (scene) => new Phaser.GameObjects.Graphics(scene);
 
 /**
- * How bright each floor row is. The torches hang on the back wall, so row 1 sits
- * in the middle of their pools and the near rows fall away. Discrete per-row
- * tones are how a tileset lights a room — a dithered ramp over this much area
- * just reads as a checkerboard. Row 0 is only slightly dim because the wall
- * already casts a hard shadow across it.
+ * How bright each floor row is. The open floor receives a gentle falloff toward
+ * the foreground, without relying on a back wall or attached torch props.
  */
-const ROW_LIGHT = [0.82, 1, 0.97, 0.93, 0.88, 0.82, 0.75, 0.68, 0.61, 0.55];
+const rowLight = (row) => 0.94 - (row / Math.max(1, ROWS - 1)) * 0.28;
 
 /** 0xRRGGBB multiply tint for a brightness in 0..1, quantised to 12 steps. */
 function shade(b) {
@@ -107,8 +104,6 @@ export class ArenaScenery {
 
     this.#stampRoom(theme);
     this.#addSeal(theme);
-    this.#addTorches(theme);
-    this.#addBanners(theme);
     this.#addShafts(theme);
     this.#addMotes(theme);
 
@@ -137,33 +132,12 @@ export class ArenaScenery {
     px(g, 0, 0, GAME_W, GAME_H, 0x07060c, 1);
     flush();
 
-    // ── back wall, full canvas width so no HUD edge ever reveals a seam.
-    // Each column is tinted by how close it sits to a torch, so the light in
-    // the room comes from somewhere rather than being ambient. The wall takes
-    // the widest swing of anything in the room — it's the surface the torches
-    // are actually bolted to.
-    for (let x = 0; x < GAME_W; x += TILE.w) {
-      const b = 0.34 + 0.66 * torchFalloff(x + TILE.w / 2, 150);
-      rt.drawFrame(K.wall(id, Math.floor(hash2(x, 0, 11) * 4)), '__BASE',
-        x, WALL.y, 1, shade(b));
-    }
-    for (let x = 0; x < GAME_W; x += TILE.w) {
-      rt.drawFrame(K.cap(id), '__BASE', x, WALL.y - 8, 1,
-        shade(0.3 + 0.6 * torchFalloff(x + TILE.w / 2, 170)));
-    }
-    for (const x of ALCOVE_X) rt.draw(K.alcove(id), x - 20, WALL.y + 22);
-    for (const x of PILASTER_X) {
-      rt.drawFrame(K.pilaster(id), '__BASE', x - 14, WALL.y - 6, 1,
-        shade(0.4 + 0.6 * torchFalloff(x, 165)));
-    }
-
-    // ── floor: 28 x 10 flagstones. Variant per cell breaks the grid; tint per
-    // cell puts the room in the torchlight. The floor swings less than the wall
-    // — units have to stay readable wherever they stand.
+    // ── floor: it now reaches directly below the HUD, where the back wall
+    // used to sit. Variants break the grid while the gentle row tint preserves
+    // depth without blocking any usable combat space.
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
-        const cx = ARENA.x + c * TILE.w + TILE.w / 2;
-        const b = ROW_LIGHT[r] * (0.66 + 0.42 * torchFalloff(cx, 175));
+        const b = rowLight(r);
         rt.drawFrame(K.slab(id, Math.floor(hash2(c, r, 7) * 6)), '__BASE',
           ARENA.x + c * TILE.w, ARENA.y + r * TILE.h, 1, shade(b));
       }
@@ -202,7 +176,7 @@ export class ArenaScenery {
     }
     flush();
 
-    // ── moss creeps out of the wall/floor joint on damp floors
+    // ── moss creeps in from the open upper edge on damp floors
     if (d.moss > 0) {
       for (let x = ARENA.x; x < ARENA.right; x += 6) {
         const n = hash2(x, 3, 5);
@@ -221,31 +195,14 @@ export class ArenaScenery {
     }
     flush();
 
-    // ── the wall's cast shadow: the strongest depth cue in the room.
-    // Power-curved, not linear: a linear ramp lingers around 50% coverage, and
-    // 50% ordered dither is a checkerboard, which reads as fabric, not shadow.
-    const csh = 40;
-    for (let i = 0; i * P < csh; i++) {
-      const a = Math.pow(1 - (i * P) / csh, 2.2) * 0.82;
-      if (a < 0.02) continue;
-      dither(g, 0, ARENA.y + i * P, GAME_W, P, 0x000000, a);
-    }
-    // the near rows already carry their own tone from ROW_LIGHT, so nothing
-    // else is layered here — a second pass would only add pattern
-    flush();
-
     // ── side walls down the left and right margins
-    for (let y = WALL.y; y < ARENA.bottom; y += TILE.h) {
+    for (let y = ARENA.y; y < ARENA.bottom; y += TILE.h) {
       rt.draw(K.side(id), 0, y);
       rt.draw(K.side(id), GAME_W - 14, y);
     }
 
     // ── foreground lip the camera looks over
     for (let x = 0; x < GAME_W; x += TILE.w) rt.draw(K.lip(id), x, ARENA.bottom - 8);
-
-    // ── above the wall is out of frame; keep it black behind the HUD
-    px(g, 0, 0, GAME_W, WALL.y - 8, 0x07060c, 1);
-    flush();
 
     g.destroy();
   }

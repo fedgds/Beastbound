@@ -15,12 +15,12 @@ export const GAME_H = 672;
 // Trim the chrome slightly to give the battlefield two extra tactical rows.
 export const HUD = { top: 72, bottom: 112 };
 
-/** Back wall band drawn above the floor. Purely scenery — nothing walks here. */
+/** Legacy wall dimensions, retained only for baking unused theme textures. */
 export const WALL = { y: HUD.top, h: 108 };
 WALL.bottom = WALL.y + WALL.h; // 180
 
-/** The battlefield rect: 28 x 10 slabs, exactly — room for flanks and backlines. */
-export const ARENA = { x: 16, y: WALL.bottom, w: 1120, h: 380 };
+/** Full-height battlefield: the old back wall is now usable floor space. */
+export const ARENA = { x: 16, y: HUD.top, w: 1120, h: GAME_H - HUD.top - HUD.bottom };
 ARENA.right = ARENA.x + ARENA.w;
 ARENA.bottom = ARENA.y + ARENA.h; // 560 = GAME_H - HUD.bottom
 ARENA.cx = ARENA.x + ARENA.w / 2;
@@ -30,7 +30,7 @@ ARENA.cy = ARENA.y + ARENA.h / 2;
  * in the arena (see Hero.moveBounds()). */
 export const HERO_ZONE = { x: ARENA.cx - 180, w: 360 };
 
-/** Smaller slabs divide the expanded field exactly: 28 cols x 10 rows. */
+/** Smaller slabs tile the expanded floor. */
 export const TILE = { w: 40, h: 38 };
 
 export const COLORS = {

@@ -55,6 +55,7 @@ export default class AudioSystem {
       blizzard: [240, 0.42, 'triangle', 0.06, 720],
       felineAgility: [360, 0.16, 'sawtooth', 0.04, 920],
       burningPalm: [170, 0.3, 'sawtooth', 0.065, 680],
+      solarRoar: [92, 0.44, 'sawtooth', 0.075, 410],
       solarLionFury: [120, 0.52, 'sawtooth', 0.075, 760],
       solarFinisher: [85, 0.32, 'square', 0.08, 36],
       shadowstep: [310, 0.18, 'sawtooth', 0.04, 920],

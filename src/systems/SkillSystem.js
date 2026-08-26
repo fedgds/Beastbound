@@ -31,7 +31,7 @@ const NOVA_ICE_PALETTE = [
 ];
 
 const SHIELD_BASH_PALETTE = [
-  0xeaffff, 0x8fffff, 0x45e5ff, 0x1baad4, 0x2878a8, 0x1d4f78,
+  0xfffee2, 0xfff1a6, 0xffd45c, 0xe99a38, 0xb76526, 0x6b351d,
 ];
 
 const JUDGMENT_PALETTE = [
@@ -39,8 +39,8 @@ const JUDGMENT_PALETTE = [
 ];
 
 const WHIRLWIND_PALETTE = [
-  0xffffff, 0xe8f8ff, 0xb9e9ff, 0x78ccef, 0x438fbd, 0x285b86, 0x173a61,
-  0xffdc7a,
+  0xfffee2, 0xfff1a6, 0xffdc7a, 0xffc34d, 0xe99a38, 0xb76526, 0x6b351d,
+  0xffffff,
 ];
 
 // Call of Valor moves from a white-hot blessing into a warm, persistent gold.
@@ -79,6 +79,7 @@ export default class SkillSystem {
     this.judgments = [];
     this.felineDashes = [];
     this.burningPalms = [];
+    this.solarRoars = [];
     this.burns = [];
     this.solarFuries = [];
     this.shadowsteps = [];
@@ -253,6 +254,7 @@ export default class SkillSystem {
     this.#tickJudgments(dt);
     this.#tickFelineDashes(dt);
     this.#tickBurningPalms(dt);
+    this.#tickSolarRoars(dt);
     this.#tickBurns(dt);
     this.#tickSolarFuries(dt);
     this.#tickShadowsteps(dt);
@@ -268,7 +270,7 @@ export default class SkillSystem {
     for (const list of [
       this.blizzards, this.spins, this.auras, this.iceWalls, this.novas, this.lances,
       this.shieldBashes, this.judgments, this.felineDashes, this.burningPalms,
-      this.burns, this.solarFuries, this.shadowsteps, this.venomShots,
+      this.solarRoars, this.burns, this.solarFuries, this.shadowsteps, this.venomShots,
       this.poisons, this.umbralTraps, this.eclipseBarrages,
     ]) {
       for (const e of list) { e.gfx?.destroy(); e.gfxBack?.destroy(); e.gfxAir?.destroy(); }
@@ -283,6 +285,7 @@ export default class SkillSystem {
     this.judgments = [];
     this.felineDashes = [];
     this.burningPalms = [];
+    this.solarRoars = [];
     this.burns = [];
     this.solarFuries = [];
     this.shadowsteps = [];
@@ -585,7 +588,7 @@ export default class SkillSystem {
           hero, hero.x, y, facing, eff.radius, eff.arc, dmg,
           {
             knockback: eff.knockback,
-            color: skill.id === 'shieldBash' ? COLORS.shield : COLORS.tgDamage,
+            color: skill.id === 'shieldBash' ? SHIELD_BASH_PALETTE[2] : COLORS.tgDamage,
           },
         );
         if (skill.id === 'shieldBash') {
@@ -594,7 +597,7 @@ export default class SkillSystem {
           this.scene.fx.slash(hero.x + facing * 20, y, facing, COLORS.tgDamage);
         }
         this.scene.fx.impact({
-          color: skill.id === 'shieldBash' ? COLORS.shield : COLORS.tgDamage,
+          color: skill.id === 'shieldBash' ? SHIELD_BASH_PALETTE[2] : COLORS.tgDamage,
           shake: 0.012, flash: 0.28, stop: 95,
         });
         this.#report(skill, victims.length);
@@ -615,11 +618,7 @@ export default class SkillSystem {
       case 'circleDamageAt': {
         const x = ctx.x ?? hero.x;
         const y = ctx.y ?? hero.y;
-        const victims = this.scene.combat.circleDamage(
-          hero, x, y, eff.radius, dmg, { knockback: eff.knockback, color: JUDGMENT_PALETTE[3] },
-        );
-        this.#judgmentFx(x, y, eff);
-        this.#report(skill, victims.length);
+        this.#judgmentFx(hero, skill, x, y, eff);
         break;
       }
 
@@ -644,21 +643,8 @@ export default class SkillSystem {
       }
 
       case 'venomArrow': {
-        const y = hero.y - 10;
         const facing = ctx.facing ?? hero.facing;
-        const victims = this.scene.combat.monstersInCone(
-          hero.x, y, facing, eff.radius, eff.arc,
-        );
-        for (const m of victims) {
-          const dealt = this.scene.combat.strike(hero, m, {
-            mult: eff.mult, color: VENOM_PALETTE[2], ignoreBlock: true,
-          });
-          if (dealt > 0) this.#applyPoison(hero, m, eff);
-          m.applySlow(eff.slowMult, eff.slowSeconds);
-        }
-        this.#startVenomShot(hero, facing, eff);
-        this.scene.fx.impact({ color: NIGHTVEIL_PALETTE[3], shake: 0.008, flash: 0.18, stop: 60 });
-        this.#report(skill, victims.length);
+        this.#startVenomShot(hero, skill, facing, eff);
         break;
       }
 
@@ -705,6 +691,22 @@ export default class SkillSystem {
         }
         this.#startBurningPalm(hero, facing, eff);
         this.scene.fx.impact({ color: SOLAR_PALETTE[3], shake: 0.012, flash: 0.3, stop: 90 });
+        this.#report(skill, victims.length);
+        break;
+      }
+
+      case 'solarRoar': {
+        const y = hero.y - 10;
+        const victims = this.scene.combat.monstersInCircle(hero.x, y, eff.radius);
+        for (const m of victims) {
+          this.scene.combat.strike(hero, m, {
+            mult: eff.mult, color: SOLAR_PALETTE[2], knockback: eff.knockback,
+          });
+          m.applyStun(eff.stunSeconds);
+          m.applySlow(eff.slowMult, eff.slowSeconds);
+        }
+        this.#startSolarRoar(hero, eff);
+        this.scene.fx.impact({ color: SOLAR_PALETTE[2], shake: 0.018, flash: 0.42, stop: 125 });
         this.#report(skill, victims.length);
         break;
       }
@@ -803,12 +805,20 @@ export default class SkillSystem {
     }
   }
 
-  #judgmentFx(x, y, eff) {
+  #judgmentFx(hero, skill, x, y, eff) {
     this.judgments.push({
-      x, y,
+      hero, skill, x, y,
       radius: eff.radius,
       life: eff.fxLife ?? 1.45,
       age: 0,
+      waves: eff.waves ?? 3,
+      wave: 0,
+      firstWaveDelay: eff.firstWaveDelay ?? 0.12,
+      nextWaveAt: eff.firstWaveDelay ?? 0.12,
+      waveInterval: eff.waveInterval ?? 0.36,
+      mult: eff.mult ?? 1,
+      knockback: eff.knockback ?? 70,
+      hits: new Set(),
       phase: Phaser.Math.FloatBetween(0, Math.PI * 2),
       gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphGround),
       gfxAir: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
@@ -817,20 +827,54 @@ export default class SkillSystem {
     // The ultimate leaves the floor's biggest scar — the room remembers it
     // after the animated halo and divine column have dissipated.
     this.scene.fx.scorch(x, y, eff.radius * 0.72, JUDGMENT_PALETTE[5]);
-    this.scene.fx.impact({ color: JUDGMENT_PALETTE[3], shake: 0.024, flash: 0.52, stop: 140 });
+  }
+
+  /** One beat of Judgment. Damage is intentionally resolved on the visual
+   * pulse, so the three columns feel like three real impacts instead of a
+   * single hit wearing a longer animation. */
+  #strikeJudgmentWave(judgment) {
+    const { hero, x, y, radius, mult, knockback, wave, waves } = judgment;
+    if (!hero.alive) return;
+    const last = wave === waves - 1;
+    const victims = this.scene.combat.monstersInCircle(x, y, radius);
+    for (const m of victims) {
+      this.scene.combat.strike(hero, m, {
+        mult,
+        color: last ? JUDGMENT_PALETTE[1] : JUDGMENT_PALETTE[3],
+        knockback: last ? knockback : Math.round(knockback * 0.34),
+      });
+      judgment.hits.add(m);
+    }
+    const pulseRadius = radius * (0.4 + wave * 0.3);
+    this.scene.fx.skillBurst(x, y - 10, JUDGMENT_PALETTE[last ? 1 : 3], 'explosion');
+    this.scene.fx.ring(x, y, pulseRadius, JUDGMENT_PALETTE[last ? 1 : 3], 340, last ? 4 : 2);
+    this.scene.fx.impact(last
+      ? { color: JUDGMENT_PALETTE[1], shake: 0.024, flash: 0.46, stop: 125 }
+      : { color: JUDGMENT_PALETTE[3], shake: 0.012, flash: 0.2, stop: 55 });
   }
 
   #tickJudgments(dt) {
     for (const judgment of [...this.judgments]) {
       judgment.age += dt;
+      while (judgment.wave < judgment.waves && judgment.age >= judgment.nextWaveAt) {
+        this.#strikeJudgmentWave(judgment);
+        judgment.wave += 1;
+        judgment.nextWaveAt += judgment.waveInterval;
+      }
       const p = Phaser.Math.Clamp(judgment.age / judgment.life, 0, 1);
       const strike = Phaser.Math.Clamp(judgment.age / 0.2, 0, 1);
       const burst = Phaser.Math.Clamp((judgment.age - 0.12) / 0.34, 0, 1);
       const release = Phaser.Math.Clamp((judgment.age - 0.32) / 0.78, 0, 1);
       const fade = p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.3);
-      const beamFade = judgment.age < 0.62
-        ? 1
-        : Math.max(0, 1 - (judgment.age - 0.62) / 0.34);
+      // Three stepped flashes make the pillar visibly judder on each damage
+      // beat. The long tail then lets the holy seal decay rather than blink out.
+      const beatAge = Math.max(0, judgment.age - (judgment.firstWaveDelay ?? 0.12));
+      const beatPhase = (beatAge % judgment.waveInterval) / judgment.waveInterval;
+      const activeBeat = judgment.wave < judgment.waves || beatPhase < 0.5;
+      const beamFade = activeBeat
+        ? 0.55 + Math.max(0, 1 - beatPhase * 2) * 0.45
+        : Math.max(0, 1 - (judgment.age - (judgment.nextWaveAt - judgment.waveInterval)) / 0.65);
+      const pulseJitter = judgment.wave > 0 ? ((Math.floor(judgment.age * 42) % 2) * 2 - 1) * P : 0;
       const g = judgment.gfx;
       const air = judgment.gfxAir;
       const x = snap(judgment.x);
@@ -885,11 +929,11 @@ export default class SkillSystem {
         const beamWidth = P * (5 + Math.round(strike * 7));
         const flicker = Math.floor(judgment.age * 24) % 3;
         air.fillStyle(JUDGMENT_PALETTE[4], 0.34 * beamFade);
-        air.fillRect(snap(x - beamWidth * 1.45), beamTop, snap(beamWidth * 2.9), y - beamTop);
+        air.fillRect(snap(x - beamWidth * 1.45 + pulseJitter), beamTop, snap(beamWidth * 2.9), y - beamTop);
         air.fillStyle(JUDGMENT_PALETTE[2], 0.8 * beamFade);
-        air.fillRect(snap(x - beamWidth * 0.75), beamTop, snap(beamWidth * 1.5), y - beamTop + P * 2);
+        air.fillRect(snap(x - beamWidth * 0.75 - pulseJitter), beamTop, snap(beamWidth * 1.5), y - beamTop + P * 2);
         air.fillStyle(JUDGMENT_PALETTE[0], (0.92 - flicker * 0.08) * beamFade);
-        air.fillRect(snap(x - beamWidth * 0.28), beamTop, Math.max(P * 2, snap(beamWidth * 0.56)), y - beamTop + P * 4);
+        air.fillRect(snap(x - beamWidth * 0.28 + pulseJitter), beamTop, Math.max(P * 2, snap(beamWidth * 0.56)), y - beamTop + P * 4);
 
         // Broken side streaks keep the pillar from looking like one rectangle.
         for (let i = 0; i < 8; i++) {
@@ -903,7 +947,9 @@ export default class SkillSystem {
 
       // Impact star and straight rays peak immediately after contact, then
       // recede behind the persistent circular crown.
-      const starFade = Math.max(0, 1 - Math.abs(judgment.age - 0.27) / 0.3);
+      const latestWaveAt = judgment.firstWaveDelay
+        + Math.max(0, judgment.wave - 1) * judgment.waveInterval;
+      const starFade = Math.max(0, 1 - Math.abs(judgment.age - latestWaveAt) / 0.24);
       if (starFade > 0) {
         air.fillStyle(JUDGMENT_PALETTE[0], starFade * 0.94);
         pxStar(air, x, y - 4, P * (4 + Math.round(starFade * 7)));
@@ -932,6 +978,7 @@ export default class SkillSystem {
       }
 
       if (judgment.age < judgment.life) continue;
+      this.#report(judgment.skill, judgment.hits.size);
       g.destroy();
       air.destroy();
       this.judgments = this.judgments.filter((j) => j !== judgment);
@@ -1422,6 +1469,7 @@ export default class SkillSystem {
       radius: eff.radius,
       travel: eff.waveTravel ?? 0.34,
       life: eff.waveLife ?? 0.68,
+      crestScale: eff.crestScale ?? 1,
       age: 0,
       phase: Phaser.Math.FloatBetween(0, Math.PI * 2),
       gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
@@ -1450,8 +1498,11 @@ export default class SkillSystem {
         const x = snap(bash.x + bash.dir * (16 + bash.radius * ep));
         const y = snap(bash.y + Math.sin(bash.phase + ep * 7) * P);
         const alpha = fade * (echo === 0 ? 0.95 : 0.1 + (3 - echo) * 0.1);
-        const width = 34 + ep * 15 - echo * 2;
-        const height = 42 + ep * 13 - echo * 3;
+        // The leading crest is deliberately almost as tall as the cone's
+        // mouth: it now reads as a shield wall sweeping left-to-right (or
+        // right-to-left) instead of a small projectile inside its warning.
+        const width = (34 + ep * 15 - echo * 2) * bash.crestScale;
+        const height = (42 + ep * 13 - echo * 3) * bash.crestScale;
         this.#drawShieldCrest(g, x, y, bash.dir, width, height, alpha, echo === 0, bash.age);
       }
 
@@ -1497,8 +1548,8 @@ export default class SkillSystem {
     const topY = snap(cy - height * 0.46);
     const bottomY = snap(cy + height * 0.46);
 
-    // Double cyan outline and jagged rear fins make the leading frame readable
-    // as a magical shield bash instead of a generic blue projectile.
+    // Double gold outline and jagged rear fins make the leading frame readable
+    // as a magical shield bash instead of a generic projectile.
     g.fillStyle(bright ? SHIELD_BASH_PALETTE[1] : SHIELD_BASH_PALETTE[4], alpha);
     pxLine(g, tipX, cy, snap(cx + dir * width * 0.22), topY);
     pxLine(g, snap(cx + dir * width * 0.22), topY, backX, snap(cy - height * 0.25));
@@ -2103,11 +2154,21 @@ export default class SkillSystem {
   }
 
   // ── Nightveil Archer: Venom Fang + poison ────────────────────────────────
-  #startVenomShot(hero, facing, eff) {
+  #startVenomShot(hero, skill, facing, eff) {
+    const targets = this.scene.combat.monstersInCone(
+      hero.x, hero.y - 10, facing, eff.radius ?? 330, eff.arc ?? 54,
+    );
     this.venomShots.push({
+      hero, skill, effect: eff,
       x: hero.x + facing * 18,
       y: hero.y - hero.spriteHeight * 0.57,
-      dir: facing, range: eff.radius ?? 330, life: eff.life ?? 0.72,
+      dir: facing, range: eff.radius ?? 330,
+      count: eff.arrows ?? 10, fired: 0, nextArrowAt: 0,
+      interval: eff.arrowInterval ?? 0.09,
+      arrowLife: eff.arrowLife ?? 0.52,
+      spread: Phaser.Math.DegToRad(eff.arrowSpread ?? 50),
+      damageMult: eff.arrowMult ?? 0.18,
+      targets, hitSet: new Set(), arrows: [],
       age: 0, phase: Phaser.Math.FloatBetween(0, Math.PI * 2),
       gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
     });
@@ -2118,34 +2179,84 @@ export default class SkillSystem {
   #tickVenomShots(dt) {
     for (const shot of [...this.venomShots]) {
       shot.age += dt;
-      const p = Phaser.Math.Clamp(shot.age / shot.life, 0, 1);
-      const travel = shot.range * (1 - (1 - p) ** 3);
-      const fade = p < 0.68 ? 1 : Math.max(0, 1 - (p - 0.68) / 0.32);
-      const cx = snap(shot.x + shot.dir * travel);
-      const cy = snap(shot.y + Math.sin(shot.phase + p * 13) * P);
-      const g = shot.gfx;
-      g.clear();
+      while (shot.fired < shot.count && shot.age >= shot.nextArrowAt) {
+        const base = shot.dir < 0 ? Math.PI : 0;
+        // Pick a random point inside the warned cone, then drop the fang from
+        // above it. This makes a true area barrage instead of a left-to-right
+        // fan whose arrows all share the same horizontal line.
+        const liveTargets = shot.targets.filter((m) => m.alive);
+        const focus = liveTargets.length
+          ? liveTargets[Phaser.Math.Between(0, liveTargets.length - 1)]
+          : null;
+        const fieldAngle = base + Phaser.Math.FloatBetween(-shot.spread * 0.5, shot.spread * 0.5);
+        const fieldRange = Phaser.Math.FloatBetween(44, shot.range);
+        // With targets present, each arrow picks one at random and lands at a
+        // random nearby point. This keeps every projectile useful while still
+        // scattering its impacts across the whole occupied warning area.
+        const impactAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        const impactOffset = Phaser.Math.FloatBetween(0, 60);
+        const endX = focus
+          ? focus.x + Math.cos(impactAngle) * impactOffset
+          : shot.x + Math.cos(fieldAngle) * fieldRange;
+        const endY = focus
+          ? focus.y + Math.sin(impactAngle) * impactOffset * 0.72
+          : shot.y + Math.sin(fieldAngle) * fieldRange * 0.72;
+        const startX = endX + Phaser.Math.FloatBetween(-44, 44);
+        const startY = endY - Phaser.Math.FloatBetween(135, 210);
+        const angle = Math.atan2(endY - startY, endX - startX);
+        shot.arrows.push({ startX, startY, endX, endY, angle, bornAt: shot.age });
 
-      // Bright arrow core, barbed head and a broken purple/green wake.
-      g.fillStyle(VENOM_PALETTE[0], 0.94 * fade);
-      pxLine(g, cx - shot.dir * 18, cy, cx + shot.dir * 8, cy);
-      g.fillStyle(VENOM_PALETTE[1], 0.9 * fade);
-      pxLine(g, cx + shot.dir * 8, cy, cx + shot.dir * 17, cy - P * 3);
-      pxLine(g, cx + shot.dir * 8, cy, cx + shot.dir * 17, cy + P * 3);
-      g.fillStyle(NIGHTVEIL_PALETTE[3], 0.82 * fade);
-      pxLine(g, cx - shot.dir * 14, cy, cx - shot.dir * 25, cy - P * 4);
-      pxLine(g, cx - shot.dir * 14, cy, cx - shot.dir * 25, cy + P * 4);
-      for (let i = 0; i < 22; i++) {
-        const q = i / 21;
-        const tx = snap(cx - shot.dir * (20 + q * 112));
-        const ty = snap(cy + Math.sin(shot.phase + i * 1.61 + p * 16) * (3 + q * 14));
-        g.fillStyle(i % 3 === 0 ? VENOM_PALETTE[2 + (i % 2)]
-          : NIGHTVEIL_PALETTE[3 + (i % 3)], (0.66 - q * 0.48) * fade);
-        g.fillRect(tx, ty, i % 6 === 0 ? P * 2 : P, i % 4 === 0 ? P * 2 : P);
-        if (i % 5 === 0) pxLine(g, tx, ty, tx - shot.dir * P * 3, ty + (i % 2 ? P * 2 : -P * 2));
+        const target = liveTargets
+          .sort((a, b) => Phaser.Math.Distance.Between(endX, endY, a.x, a.y)
+            - Phaser.Math.Distance.Between(endX, endY, b.x, b.y))[0];
+        const hitRange = 76;
+        if (target && shot.hero.alive
+          && Phaser.Math.Distance.Between(endX, endY, target.x, target.y) <= hitRange) {
+          const dealt = this.scene.combat.strike(shot.hero, target, {
+            mult: shot.damageMult, color: VENOM_PALETTE[2], ignoreBlock: true,
+          });
+          if (dealt > 0) this.#applyPoison(shot.hero, target, shot.effect);
+          target.applySlow(shot.effect.slowMult, shot.effect.slowSeconds);
+          shot.hitSet.add(target);
+          this.scene.fx.hitSpark(target.x, target.y - target.spriteHeight * 0.5, VENOM_PALETTE[1], 3, angle);
+        }
+        shot.fired += 1;
+        shot.nextArrowAt += shot.interval;
       }
 
-      if (p < 1) continue;
+      const g = shot.gfx;
+      g.clear();
+      shot.arrows = shot.arrows.filter((arrow) => shot.age - arrow.bornAt < shot.arrowLife);
+      // Each fang falls toward its own random impact point inside the warning
+      // zone. The head always leads into that point, so arrows never render
+      // backwards when the Archer faces left.
+      for (const arrow of shot.arrows) {
+        const p = Phaser.Math.Clamp((shot.age - arrow.bornAt) / shot.arrowLife, 0, 1);
+        const fade = p < 0.72 ? 1 : Math.max(0, 1 - (p - 0.72) / 0.28);
+        // The fang raster's head is drawn along its local positive axis;
+        // reverse that local axis so its visible point faces the impact.
+        const dx = -Math.cos(arrow.angle);
+        const dy = -Math.sin(arrow.angle);
+        const travel = 1 - (1 - p) ** 3;
+        const cx = snap(Phaser.Math.Linear(arrow.startX, arrow.endX, travel));
+        const cy = snap(Phaser.Math.Linear(arrow.startY, arrow.endY, travel));
+        g.fillStyle(VENOM_PALETTE[0], 0.94 * fade);
+        pxLine(g, cx - dx * 26, cy - dy * 26, cx + dx * 11, cy + dy * 11);
+        g.fillStyle(VENOM_PALETTE[1], 0.9 * fade);
+        pxLine(g, cx + dx * 10, cy + dy * 10, cx + dx * 23 - dy * 6, cy + dy * 23 + dx * 6);
+        pxLine(g, cx + dx * 10, cy + dy * 10, cx + dx * 23 + dy * 6, cy + dy * 23 - dx * 6);
+        for (let i = 0; i < 8; i++) {
+          const tail = 28 + i * 11;
+          const tx = snap(cx - dx * tail + Math.sin(arrow.angle + i * 2.1) * P * 2);
+          const ty = snap(cy - dy * tail + Math.cos(arrow.angle + i * 2.1) * P * 2);
+          g.fillStyle(i % 2 ? VENOM_PALETTE[2] : NIGHTVEIL_PALETTE[3], (0.62 - i * 0.06) * fade);
+          g.fillRect(tx, ty, i % 3 === 0 ? P * 2 : P, P);
+        }
+      }
+
+      if (shot.fired < shot.count || shot.arrows.length) continue;
+      this.scene.fx.impact({ color: VENOM_PALETTE[2], shake: 0.012, flash: 0.24, stop: 75 });
+      this.#report(shot.skill, shot.hitSet.size);
       g.destroy();
       this.venomShots = this.venomShots.filter((s) => s !== shot);
     }
@@ -2216,20 +2327,29 @@ export default class SkillSystem {
     for (const trap of [...this.umbralTraps]) {
       trap.age += dt;
       const p = Phaser.Math.Clamp(trap.age / trap.life, 0, 1);
-      const open = Phaser.Math.Clamp(trap.age / 0.24, 0, 1);
-      const fade = p < 0.72 ? 1 : Math.max(0, 1 - (p - 0.72) / 0.28);
+      const open = Phaser.Math.Clamp(trap.age / 0.34, 0, 1);
+      const fade = p < 0.82 ? 1 : Math.max(0, 1 - (p - 0.82) / 0.18);
       const r = trap.radius * open;
+      const pulse = 0.5 + Math.sin(trap.age * 8.5) * 0.5;
       const g = trap.gfx;
       const air = trap.gfxAir;
       g.clear();
       air.clear();
 
-      g.fillStyle(NIGHTVEIL_PALETTE[7], 0.34 * fade);
+      // Layered abyss: a breathing black core, three counter-rotating seals,
+      // and irregular edge fractures keep the trap threatening while it lasts.
+      g.fillStyle(NIGHTVEIL_PALETTE[7], (0.32 + pulse * 0.12) * fade);
       pxDisc(g, trap.x, trap.y + 5, r, r * GROUND_SQUASH, { every: 3 });
+      g.fillStyle(NIGHTVEIL_PALETTE[6], (0.36 + pulse * 0.16) * fade);
+      pxDisc(g, trap.x, trap.y + 5, r * (0.3 + pulse * 0.09), r * (0.3 + pulse * 0.09) * GROUND_SQUASH, { every: 2 });
       g.fillStyle(NIGHTVEIL_PALETTE[4], 0.78 * fade);
       pxGroundRing(g, trap.x, trap.y + 5, r, { dash: 5, gap: 2, rot: trap.age * 18 });
       g.fillStyle(NIGHTVEIL_PALETTE[2], 0.58 * fade);
       pxGroundRing(g, trap.x, trap.y + 5, r * 0.62, { dash: 2, gap: 3, rot: -trap.age * 24 });
+      g.fillStyle(NIGHTVEIL_PALETTE[1], (0.38 + pulse * 0.26) * fade);
+      pxGroundRing(g, trap.x, trap.y + 5, r * (0.3 + pulse * 0.08), {
+        dash: 2, gap: 2, rot: trap.age * 35,
+      });
       // Eight hooked teeth point inward while branching cracks reach outward.
       for (let i = 0; i < 12; i++) {
         const a = trap.phase + (i / 12) * Math.PI * 2;
@@ -2255,6 +2375,39 @@ export default class SkillSystem {
           const lx = bx + Math.sin(trap.age * 8 + i + link) * P * 2;
           pxArc(air, lx, ly, P * 2, P * 3, { from: 0, to: Math.PI * 2, dash: 2, gap: 1 });
         }
+      }
+
+      // Six spectral hands breach the rim, opening and closing around anyone
+      // inside. Their fingers are deliberately offset so the animation has a
+      // restless, grasping rhythm rather than a static ring of decorations.
+      for (let hand = 0; hand < 6; hand++) {
+        const a = trap.phase + hand * (Math.PI * 2 / 6) + Math.sin(trap.age * 2 + hand) * 0.08;
+        const hx = trap.x + Math.cos(a) * r * 0.76;
+        const hy = trap.y + 4 + Math.sin(a) * r * 0.38;
+        const rise = (18 + pulse * 14 + (hand % 2) * 7) * open;
+        const sway = Math.sin(trap.age * 9 + hand * 1.8) * P * 2;
+        air.fillStyle(NIGHTVEIL_PALETTE[3 + (hand % 2)], (0.38 + pulse * 0.24) * fade);
+        pxDisc(air, hx + sway, hy - rise * 0.42, P * 3, P * 4, { every: 1 });
+        for (let finger = -2; finger <= 2; finger++) {
+          const fx = hx + sway + finger * P * 2;
+          const fy = hy - rise * 0.42;
+          air.fillStyle(NIGHTVEIL_PALETTE[1 + ((hand + finger + 4) % 4)], (0.44 + pulse * 0.22) * fade);
+          pxLine(air, fx, fy, fx + Math.sin(a) * P * 2, fy - rise * (0.48 + Math.abs(finger) * 0.05));
+        }
+      }
+
+      // Drifting violet souls rise from the seal for its whole lifetime.
+      for (let mote = 0; mote < 30; mote++) {
+        const q = ((mote * 23) % 31) / 30;
+        const ma = trap.phase + mote * 2.27 + trap.age * (mote % 2 ? 0.45 : -0.35);
+        const mr = r * (0.16 + q * 0.78);
+        const lift = (trap.age * (15 + (mote % 5) * 5) + mote * 11) % 46;
+        const mx = snap(trap.x + Math.cos(ma) * mr);
+        const my = snap(trap.y + 4 + Math.sin(ma) * mr * GROUND_SQUASH - lift);
+        air.fillStyle(mote % 5 === 0 ? NIGHTVEIL_PALETTE[1] : NIGHTVEIL_PALETTE[3 + (mote % 3)],
+          (0.24 + (mote % 4) * 0.11) * fade);
+        air.fillRect(mx, my, mote % 7 === 0 ? P * 2 : P, mote % 6 === 0 ? P * 2 : P);
+        if (mote % 10 === 0) pxStar(air, mx, my, P);
       }
 
       if (p < 1) continue;
@@ -2385,84 +2538,93 @@ export default class SkillSystem {
 
   // ── Lion Monk: Feline Agility ────────────────────────────────────────────
   #startFelineDash(hero, eff) {
-    const target = hero.target?.alive ? hero.target : null;
-    const b = hero.moveBounds();
-    let angle = hero.facing < 0 ? Math.PI : 0;
-    let distance = eff.distance ?? 150;
+    const jumps = eff.jumps ?? 3;
+    const targets = this.scene.monsters
+      .filter((m) => m.alive)
+      .sort((a, b) => hero.distanceTo(a) - hero.distanceTo(b))
+      .slice(0, jumps);
+    if (!targets.length) return;
 
-    if (target) {
-      const toward = Math.atan2(target.y - hero.y, target.x - hero.x);
-      const gap = hero.distanceTo(target);
-      if (gap > hero.basicRange * 1.15) {
-        angle = toward;
-        distance = Math.min(distance, Math.max(42, gap - hero.basicRange * 0.72));
-      } else {
-        // Already in striking range: spring across the attack line instead of
-        // wasting the mobility skill on a zero-length approach.
-        const side = Math.sin(this.scene.clock * 7.3) >= 0 ? 1 : -1;
-        angle = toward + side * Math.PI * 0.5;
-        distance = eff.evadeDistance ?? 92;
-      }
+    // Cycle the available targets: one monster receives all three blinks;
+    // two monsters receive A → B → A; with a crowd, the first three differ.
+    const targetCycle = [...targets];
+    while (targets.length < jumps) targets.push(targetCycle[targets.length % targetCycle.length]);
+    const dash = {
+      hero,
+      targets,
+      jump: 0,
+      nextJumpAt: eff.jumpInterval ?? 0.2,
+      interval: eff.jumpInterval ?? 0.2,
+      damageMult: eff.damageMult ?? 0.56,
+      knockback: eff.knockback ?? 16,
+      trailLife: eff.trailLife ?? 0.58,
+      age: 0,
+      trails: [],
+      gfx: this.scene.add.graphics().setDepth(DEPTH.unitFx),
+    };
+    this.felineDashes.push(dash);
+    this.#executeFelineBlink(dash);
+    this.scene.fx.popText(hero.x, hero.y - hero.spriteHeight - 10, 'TRIPLE POUNCE', SOLAR_PALETTE[1]);
+  }
+
+  #executeFelineBlink(dash) {
+    const { hero } = dash;
+    const target = dash.targets[dash.jump];
+    // A previous blink can kill a fragile target. Consume that beat rather
+    // than stalling the sequence in its timing loop.
+    if (!hero.alive || !target?.alive) {
+      dash.jump += 1;
+      return;
     }
-
     const startX = hero.x;
     const startY = hero.y;
-    const endX = Phaser.Math.Clamp(startX + Math.cos(angle) * distance, b.x + 18, b.right - 18);
-    const endY = Phaser.Math.Clamp(startY + Math.sin(angle) * distance, b.y + 34, b.bottom - 12);
-    hero.facing = Math.cos(angle) >= 0 ? 1 : -1;
-    hero.felineDodgeBonus = eff.dodgeBonus ?? 0.5;
-    hero.felineDodgeUntil = this.scene.clock + (eff.dodgeSeconds ?? 0.7);
-
-    this.felineDashes.push({
-      hero,
-      startX,
-      startY,
-      endX,
-      endY,
-      angle,
-      duration: eff.duration ?? 0.24,
-      age: 0,
-      gfx: this.scene.add.graphics().setDepth(DEPTH.unitFx),
+    const angle = Math.atan2(target.y - startY, target.x - startX);
+    const b = hero.moveBounds();
+    // Land just off the target's shoulder, so the sprite never sits inside it.
+    const landing = 42;
+    const endX = Phaser.Math.Clamp(target.x - Math.cos(angle) * landing, b.x + 18, b.right - 18);
+    const endY = Phaser.Math.Clamp(target.y - Math.sin(angle) * landing, b.y + 34, b.bottom - 12);
+    hero.x = endX;
+    hero.y = endY;
+    hero.facing = target.x >= endX ? 1 : -1;
+    dash.trails.push({ startX, startY, endX, endY, angle, bornAt: dash.age });
+    this.scene.combat.strike(hero, target, {
+      mult: dash.damageMult, color: SOLAR_PALETTE[2], knockback: dash.knockback, ignoreBlock: true,
     });
-    this.scene.fx.skillBurst(startX, startY - hero.spriteHeight * 0.45, SOLAR_PALETTE[1], 'arcane');
-    this.scene.fx.popText(startX, startY - hero.spriteHeight - 10, 'AGILITY', SOLAR_PALETTE[1]);
+    this.scene.fx.slash(target.x - hero.facing * 7, target.y - target.spriteHeight * 0.5, hero.facing, SOLAR_PALETTE[1]);
+    this.scene.fx.skillBurst(target.x, target.y - target.spriteHeight * 0.48, SOLAR_PALETTE[2], 'arcane');
+    this.scene.audio?.playSkill(hero, 'felineAgility');
+    dash.jump += 1;
   }
 
   #tickFelineDashes(dt) {
     for (const dash of [...this.felineDashes]) {
       dash.age += dt;
-      const p = Phaser.Math.Clamp(dash.age / dash.duration, 0, 1);
-      const eased = 1 - (1 - p) ** 3;
       const { hero } = dash;
-      if (hero.alive) {
-        hero.x = Phaser.Math.Linear(dash.startX, dash.endX, eased);
-        hero.y = Phaser.Math.Linear(dash.startY, dash.endY, eased);
+      while (dash.jump < dash.targets.length && dash.age >= dash.nextJumpAt) {
+        this.#executeFelineBlink(dash);
+        dash.nextJumpAt += dash.interval;
       }
 
       const g = dash.gfx;
       g.clear();
-      const fade = 1 - p * 0.7;
-      // Five parallel claw streaks plus stepped body echoes make the dash read
-      // as feline movement rather than a teleport.
-      for (let claw = -2; claw <= 2; claw++) {
-        const nx = -Math.sin(dash.angle) * claw * P * 2;
-        const ny = Math.cos(dash.angle) * claw * P * 2;
-        g.fillStyle(SOLAR_PALETTE[claw === 0 ? 1 : 3], (0.24 + (2 - Math.abs(claw)) * 0.09) * fade);
-        pxLine(g,
-          dash.startX + nx, dash.startY - 28 + ny,
-          hero.x - Math.cos(dash.angle) * 10 + nx,
-          hero.y - 28 - Math.sin(dash.angle) * 10 + ny);
-      }
-      for (let echo = 1; echo <= 4; echo++) {
-        const q = Math.max(0, eased - echo * 0.1);
-        const ex = Phaser.Math.Linear(dash.startX, dash.endX, q);
-        const ey = Phaser.Math.Linear(dash.startY, dash.endY, q) - hero.spriteHeight * 0.42;
-        g.fillStyle(SOLAR_PALETTE[2 + (echo % 3)], (0.22 - echo * 0.035) * fade);
-        pxDisc(g, ex, ey, 10 + echo, 18, { every: 3 });
+      dash.trails = dash.trails.filter((trail) => dash.age - trail.bornAt < dash.trailLife);
+      // The hero position snaps immediately; these claw-lined trails connect
+      // the previous and next points so three teleports remain readable.
+      for (const trail of dash.trails) {
+        const p = (dash.age - trail.bornAt) / dash.trailLife;
+        const fade = Math.max(0, 1 - p);
+        for (let claw = -2; claw <= 2; claw++) {
+          const nx = -Math.sin(trail.angle) * claw * P * 2;
+          const ny = Math.cos(trail.angle) * claw * P * 2;
+          g.fillStyle(SOLAR_PALETTE[claw === 0 ? 1 : 3], (0.24 + (2 - Math.abs(claw)) * 0.09) * fade);
+          pxLine(g, trail.startX + nx, trail.startY - 28 + ny, trail.endX + nx, trail.endY - 28 + ny);
+        }
+        g.fillStyle(SOLAR_PALETTE[1], 0.75 * fade);
+        pxStar(g, trail.endX, trail.endY - hero.spriteHeight * 0.45, P * 3);
       }
 
-      if (p < 1 && hero.alive) continue;
-      if (hero.alive) { hero.x = dash.endX; hero.y = dash.endY; }
+      if (dash.jump < dash.targets.length || dash.trails.length) continue;
       g.destroy();
       this.felineDashes = this.felineDashes.filter((d) => d !== dash);
     }
@@ -2476,7 +2638,8 @@ export default class SkillSystem {
       dir: facing,
       range: eff.radius ?? 220,
       life: opts.life ?? eff.fxLife ?? 0.62,
-      scale: opts.scale ?? 1,
+      startScale: opts.startScale ?? eff.startScale ?? opts.scale ?? 1,
+      endScale: opts.endScale ?? eff.endScale ?? opts.scale ?? 1,
       finisher: !!opts.finisher,
       age: 0,
       phase: Phaser.Math.FloatBetween(0, Math.PI * 2),
@@ -2491,8 +2654,12 @@ export default class SkillSystem {
       palm.age += dt;
       const p = Phaser.Math.Clamp(palm.age / palm.life, 0, 1);
       const travel = palm.range * (1 - (1 - p) ** 2);
-      const fade = p < 0.62 ? 1 : Math.max(0, 1 - (p - 0.62) / 0.38);
-      const size = palm.scale * (0.82 + Math.sin(p * Math.PI) * 0.25);
+      // Start as a compact hand-flame and steadily expand into a giant paw.
+      // Delaying the fade leaves the large final silhouette on screen long
+      // enough to visually match the wide end of the warning cone.
+      const fade = p < 0.78 ? 1 : Math.max(0, 1 - (p - 0.78) / 0.22);
+      const growth = Phaser.Math.Linear(palm.startScale, palm.endScale, p);
+      const size = growth * (0.92 + Math.sin(p * Math.PI) * 0.16);
       const cx = snap(palm.x + palm.dir * travel);
       const cy = snap(palm.y + Math.sin(palm.phase + p * 8) * P * 2);
       const g = palm.gfx;
@@ -2529,6 +2696,90 @@ export default class SkillSystem {
       if (p < 1) continue;
       g.destroy();
       this.burningPalms = this.burningPalms.filter((wave) => wave !== palm);
+    }
+  }
+
+  // ── Lion Monk: Solar Roar ───────────────────────────────────────────────
+  // A sun-shaped shockwave: the ground carries the pressure ring while a
+  // briefly resolved lion face in the air gives the crowd-control a signature.
+  #startSolarRoar(hero, eff) {
+    const y = hero.y - hero.spriteHeight * 0.48;
+    this.solarRoars.push({
+      x: hero.x,
+      y,
+      radius: eff.radius ?? 185,
+      life: eff.fxLife ?? 1.05,
+      age: 0,
+      phase: Phaser.Math.FloatBetween(0, Math.PI * 2),
+      gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphGround),
+      gfxAir: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
+    });
+    this.scene.fx.skillBurst(hero.x, y, SOLAR_PALETTE[1], 'explosion');
+    this.scene.fx.popText(hero.x, hero.y - hero.spriteHeight - 12, 'SOLAR ROAR', SOLAR_PALETTE[1]);
+  }
+
+  #tickSolarRoars(dt) {
+    for (const roar of [...this.solarRoars]) {
+      roar.age += dt;
+      const p = Phaser.Math.Clamp(roar.age / roar.life, 0, 1);
+      const fade = (1 - p) ** 1.35;
+      const wave = roar.radius * (1 - (1 - p) ** 2.5);
+      const g = roar.gfx;
+      const air = roar.gfxAir;
+      g.clear();
+      air.clear();
+
+      // Three stepped pressure rings make the roar feel like it has mass.
+      for (let ring = 0; ring < 3; ring++) {
+        const r = Math.max(8, wave - ring * 18);
+        g.fillStyle(SOLAR_PALETTE[1 + ring], fade * (0.75 - ring * 0.16));
+        pxArc(g, roar.x, roar.y + 18, r, r * GROUND_SQUASH, {
+          dash: ring === 2 ? 3 : 0,
+          gap: ring === 2 ? 1 : 0,
+          rot: roar.phase + p * 2,
+        });
+      }
+      // Flame-like mane rays trail each ring, rather than one uniform circle.
+      for (let i = 0; i < 20; i++) {
+        const a = (Math.PI * 2 * i) / 20 + roar.phase * 0.16;
+        const inner = Math.max(10, wave - 18 - (i % 3) * 5);
+        const outer = wave + 10 + (i % 4) * 7;
+        const x1 = roar.x + Math.cos(a) * inner;
+        const y1 = roar.y + 18 + Math.sin(a) * inner * 0.46;
+        const x2 = roar.x + Math.cos(a) * outer;
+        const y2 = roar.y + 18 + Math.sin(a) * outer * 0.46;
+        g.fillStyle(SOLAR_PALETTE[2 + (i % 3)], fade * 0.68);
+        pxLine(g, x1, y1, x2, y2);
+      }
+
+      // The solar lion appears only while the wave is young, then dissolves
+      // into sparks so it never obscures combat after the control has landed.
+      const faceFade = Math.sin(Math.min(1, p * 2.4) * Math.PI) * fade;
+      if (faceFade > 0.02) {
+        const cx = roar.x;
+        const cy = roar.y - 34 - p * 10;
+        const mane = 25 + p * 11;
+        for (let i = 0; i < 14; i++) {
+          const a = (Math.PI * 2 * i) / 14 + roar.phase * 0.08;
+          const mx = cx + Math.cos(a) * mane;
+          const my = cy + Math.sin(a) * mane * 0.82;
+          air.fillStyle(SOLAR_PALETTE[2 + (i % 3)], faceFade * 0.7);
+          pxStar(air, mx, my, P * (i % 3 === 0 ? 2 : 1));
+        }
+        air.fillStyle(SOLAR_PALETTE[3], faceFade * 0.82);
+        pxDisc(air, cx, cy, 18, 16, { every: 2 });
+        air.fillStyle(SOLAR_PALETTE[1], faceFade * 0.96);
+        pxDisc(air, cx, cy + 4, 11, 9, { every: 2 });
+        air.fillStyle(SOLAR_PALETTE[6], faceFade);
+        pxDisc(air, cx - 7, cy - 3, 3, 3);
+        pxDisc(air, cx + 7, cy - 3, 3, 3);
+        pxLine(air, cx - 3, cy + 7, cx + 3, cy + 7);
+      }
+
+      if (p < 1) continue;
+      g.destroy();
+      air.destroy();
+      this.solarRoars = this.solarRoars.filter((active) => active !== roar);
     }
   }
 
