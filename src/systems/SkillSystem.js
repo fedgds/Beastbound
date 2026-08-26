@@ -12,7 +12,17 @@
 import { COLORS, DEPTH, TELEGRAPH_KIND } from '../config.js';
 import { ROLE } from '../data/monsters.js';
 import { HERO_STATE } from '../data/heroes.js';
-import { GROUND_SQUASH, P, pxArc, pxDisc, pxGroundRing, pxLine, pxStar, snap } from '../art/PixelDraw.js';
+import {
+  GROUND_SQUASH, P, pxDisc, pxLine, pxStar, snap,
+} from '../art/PixelDraw.js';
+// Solid, shaded forms. Everything below that used to be a fan of pxLine rays or
+// a scatter of 1-block motes now goes through these, so each effect has a
+// silhouette and a lit side instead of being line-art laid over the arena.
+import {
+  arrowForm, clawGash, clawHand, crescentForm, debrisChunk, dustPuff, fangForm,
+  figureForm, flameTongue, groundBand, groundCrack, lionMaw, pillarForm,
+  runeGlyph, shade, shardFan, solidArcBand, solidWedge,
+} from '../art/SkillForms.js';
 
 const BLOOM_INTERVAL = 2.0;
 const BLOOM_HEAL = 6;
@@ -862,7 +872,6 @@ export default class SkillSystem {
         judgment.nextWaveAt += judgment.waveInterval;
       }
       const p = Phaser.Math.Clamp(judgment.age / judgment.life, 0, 1);
-      const strike = Phaser.Math.Clamp(judgment.age / 0.2, 0, 1);
       const burst = Phaser.Math.Clamp((judgment.age - 0.12) / 0.34, 0, 1);
       const release = Phaser.Math.Clamp((judgment.age - 0.32) / 0.78, 0, 1);
       const fade = p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.3);
@@ -880,101 +889,146 @@ export default class SkillSystem {
       const x = snap(judgment.x);
       const y = snap(judgment.y);
       const radius = judgment.radius;
+      const pal = JUDGMENT_PALETTE;
       g.clear();
       air.clear();
 
-      // The first ground response is a compact white-hot core. It widens into
-      // the holy seal only after the descending column has made contact.
-      const coreR = radius * (0.08 + burst * 0.18);
-      g.fillStyle(JUDGMENT_PALETTE[2], (0.34 + (1 - release) * 0.22) * fade);
-      pxDisc(g, x, y, coreR, coreR * GROUND_SQUASH, { every: release > 0.5 ? 2 : 1 });
-      g.fillStyle(JUDGMENT_PALETTE[0], 0.82 * (1 - release * 0.7) * fade);
-      pxGroundRing(g, x, y, coreR * 0.74, { dash: 3, gap: 2, rot: Math.floor(judgment.age * 16) });
-
-      // Two expanding halos: the outer ring marks the full impact footprint,
-      // while the inner solid seal mirrors the circular frames in the sheet.
-      if (burst > 0) {
-        const outerR = radius * (0.18 + burst * 0.82);
-        const crownR = radius * (0.2 + burst * 0.43);
-        g.fillStyle(JUDGMENT_PALETTE[3], (0.58 - release * 0.28) * fade);
-        pxGroundRing(g, x, y, outerR, {
-          dash: release > 0.45 ? 5 : 0,
-          gap: release > 0.45 ? 4 : 0,
-          rot: release * 5,
-        });
-        g.fillStyle(JUDGMENT_PALETTE[1], (0.86 - release * 0.4) * fade);
-        pxGroundRing(g, x, y, crownR, { dash: 4, gap: 2, rot: -release * 8 });
-
-        // Radial crown blades bend outward from the inner halo. Alternating
-        // lengths create the winged sunburst silhouette in the reference.
-        const bladeCount = 28;
-        for (let i = 0; i < bladeCount; i++) {
-          const a = judgment.phase + (i / bladeCount) * Math.PI * 2;
-          const blade = radius * (0.1 + (i % 4) * 0.025) * (1 - release * 0.34);
-          const x0 = x + Math.cos(a) * crownR;
-          const y0 = y + Math.sin(a) * crownR * GROUND_SQUASH;
-          const swept = a + (i % 2 ? 0.13 : -0.13);
-          const x1 = x + Math.cos(swept) * (crownR + blade);
-          const y1 = y + Math.sin(swept) * (crownR + blade) * GROUND_SQUASH;
-          g.fillStyle(JUDGMENT_PALETTE[1 + (i % 4)], (0.75 - release * 0.32) * fade);
-          pxLine(g, x0, y0, x1, y1);
-          if (i % 3 === 0) pxStar(g, x1, y1, P * (1 + (i % 2)));
-        }
-      }
-
-      // The descending column uses hard, stepped bands: bright central core,
-      // warm gold shoulders and faint purple fringe near the floor.
-      if (beamFade > 0) {
-        const beamTop = Math.max(0, y - 360);
-        const beamWidth = P * (5 + Math.round(strike * 7));
-        const flicker = Math.floor(judgment.age * 24) % 3;
-        air.fillStyle(JUDGMENT_PALETTE[4], 0.34 * beamFade);
-        air.fillRect(snap(x - beamWidth * 1.45 + pulseJitter), beamTop, snap(beamWidth * 2.9), y - beamTop);
-        air.fillStyle(JUDGMENT_PALETTE[2], 0.8 * beamFade);
-        air.fillRect(snap(x - beamWidth * 0.75 - pulseJitter), beamTop, snap(beamWidth * 1.5), y - beamTop + P * 2);
-        air.fillStyle(JUDGMENT_PALETTE[0], (0.92 - flicker * 0.08) * beamFade);
-        air.fillRect(snap(x - beamWidth * 0.28 + pulseJitter), beamTop, Math.max(P * 2, snap(beamWidth * 0.56)), y - beamTop + P * 4);
-
-        // Broken side streaks keep the pillar from looking like one rectangle.
-        for (let i = 0; i < 8; i++) {
-          const side = i % 2 ? 1 : -1;
-          const sx = snap(x + side * (beamWidth + (i % 4) * P * 2));
-          const sy = snap(beamTop + 24 + ((i * 47) % Math.max(40, y - beamTop - 30)));
-          air.fillStyle(JUDGMENT_PALETTE[1 + (i % 4)], (0.3 + (i % 3) * 0.12) * beamFade);
-          air.fillRect(sx, sy, P, P * (3 + (i % 4)));
-        }
-      }
-
-      // Impact star and straight rays peak immediately after contact, then
-      // recede behind the persistent circular crown.
       const latestWaveAt = judgment.firstWaveDelay
         + Math.max(0, judgment.wave - 1) * judgment.waveInterval;
-      const starFade = Math.max(0, 1 - Math.abs(judgment.age - latestWaveAt) / 0.24);
-      if (starFade > 0) {
-        air.fillStyle(JUDGMENT_PALETTE[0], starFade * 0.94);
-        pxStar(air, x, y - 4, P * (4 + Math.round(starFade * 7)));
-        for (let i = 0; i < 16; i++) {
-          const a = (i / 16) * Math.PI * 2;
-          const len = radius * (0.2 + starFade * (0.16 + (i % 4) * 0.025));
-          pxLine(air, x, y - 4,
-            x + Math.cos(a) * len,
-            y - 4 + Math.sin(a) * len * 0.72);
+      const punch = Math.max(0, 1 - Math.abs(judgment.age - latestWaveAt) / 0.3);
+      const done = judgment.wave >= judgment.waves;
+
+      // ── the seal, and the floor it ruins ──────────────────────────────
+      // Scorched core first, so the halo bands sit on burnt stone.
+      const coreR = radius * (0.1 + burst * 0.22);
+      g.fillStyle(shade(pal, 6), (0.4 + (1 - release) * 0.2) * fade);
+      pxDisc(g, x, y, coreR, coreR * GROUND_SQUASH, { every: 2 });
+      g.fillStyle(shade(pal, 2), (0.3 + punch * 0.4) * fade);
+      pxDisc(g, x, y, coreR * 0.55, coreR * 0.55 * GROUND_SQUASH);
+
+      if (burst > 0) {
+        const outerR = radius * (0.18 + burst * 0.82);
+        const crownR = radius * (0.22 + burst * 0.42);
+        groundBand(g, x, y, outerR, {
+          palette: pal, tone: 3, thickness: P * (2 + Math.round(punch * 3)),
+          alpha: (0.72 - release * 0.24) * fade, bite: 1.6, seed: 5,
+        });
+        groundBand(g, x, y, crownR, {
+          palette: pal, tone: 1, thickness: P * 3,
+          alpha: (0.8 - release * 0.3) * fade, bite: 1, seed: 12,
+        });
+
+        // Twelve runes struck into the inner seal — a verdict, in writing.
+        const runeSpin = judgment.age * 0.5;
+        for (let i = 0; i < 12; i++) {
+          const a = runeSpin + (i / 12) * Math.PI * 2;
+          runeGlyph(g,
+            x + Math.cos(a) * crownR * 0.98,
+            y + Math.sin(a) * crownR * 0.98 * GROUND_SQUASH, {
+              palette: pal, tone: 1, size: 8 + (i % 3),
+              alpha: (0.62 + punch * 0.35 - release * 0.22) * fade,
+              variant: i % 6,
+            });
+        }
+
+        // Each beat drives the fractures further out. They never close again.
+        const crackReveal = Phaser.Math.Clamp(
+          (judgment.wave + Math.min(1, (judgment.age - latestWaveAt) * 4)) / judgment.waves, 0, 1,
+        );
+        for (let i = 0; i < 14; i++) {
+          const a = judgment.phase + (i / 14) * Math.PI * 2;
+          groundCrack(g, x + Math.cos(a) * coreR * 0.7, y + Math.sin(a) * coreR * 0.7 * GROUND_SQUASH, {
+            palette: pal, tone: 4, angle: a,
+            length: radius * (0.62 + (i % 4) * 0.11),
+            alpha: (0.55 - release * 0.18) * fade,
+            reveal: crackReveal, seed: i * 3 + 2, branches: 2, width: P * 2,
+          });
         }
       }
 
-      // Gold and purple motes remain after the beam retracts, settling toward
-      // the permanent scorch mark instead of disappearing on the impact frame.
-      for (let i = 0; i < 52; i++) {
-        const q = ((i * 17) % 53) / 52;
+      // ── the sword ────────────────────────────────────────────────────
+      // It hangs at the floor on the instant of each beat, rebounds, then falls
+      // again — so three hits read as three swings of one weapon.
+      let lift;
+      if (judgment.age < judgment.firstWaveDelay) {
+        lift = 1 - (judgment.age / judgment.firstWaveDelay) ** 2;
+      } else if (done) {
+        lift = 0;
+      } else if (beatPhase < 0.3) {
+        lift = (beatPhase / 0.3) ** 0.7 * 0.6;
+      } else {
+        lift = (1 - ((beatPhase - 0.3) / 0.7) ** 2.4) * 0.6;
+      }
+
+      const swordA = fade * (done ? Math.max(0, 1 - release * 1.25) : 1);
+      if (swordA > 0.02) {
+        const bladeLen = 176;
+        const jx = snap(x + pulseJitter);
+        const tipY = snap(y - lift * 300);
+
+        // The shaft of light the sword falls inside.
+        pillarForm(air, jx, tipY, {
+          palette: pal, tone: 2,
+          height: Math.max(P * 4, tipY - Math.max(0, y - 400)),
+          width: 15 + punch * 13,
+          alpha: (0.2 + punch * 0.24) * beamFade * fade,
+          grow: 1, facets: 4, flare: 2.4, taper: 0.42,
+          bandEvery: 6, bandPhase: Math.floor(judgment.age * 22),
+          topFade: 0.4, dissolve: 0.5, seed: 8,
+        });
+
+        // Afterimages of the plunge: the same weapon, one and two beats above.
+        if (lift > 0.04) {
+          for (let a = 2; a >= 1; a--) {
+            this.#drawJudgmentSword(air, jx, snap(tipY + a * 34 + lift * 40), bladeLen,
+              swordA * 0.16 * a * lift, 0);
+          }
+        }
+        this.#drawJudgmentSword(air, jx, tipY, bladeLen, swordA, punch);
+      }
+
+      // ── the moment of contact ────────────────────────────────────────
+      if (punch > 0.02) {
+        for (let i = 0; i < 14; i++) {
+          const a = judgment.phase * 0.5 + (i / 14) * Math.PI * 2;
+          shardFan(air, x + Math.cos(a) * coreR, y + Math.sin(a) * coreR * GROUND_SQUASH, {
+            palette: pal, tone: 1 + (i % 3), angle: a, spread: 0.5, count: 3,
+            r0: 0, r1: radius * 0.24 * punch + 8, alpha: punch * 0.7,
+            squash: GROUND_SQUASH, seed: i, width: P * 2,
+          });
+        }
+        solidArcBand(air, x, y - 2, {
+          palette: pal, tone: 0, from: 0, to: Math.PI * 2,
+          r: radius * (0.2 + (1 - punch) * 0.8), thickness: P * (1 + Math.round(punch * 4)),
+          alpha: punch * 0.85, squash: GROUND_SQUASH, taperEnds: 0, seed: 22,
+        });
+      }
+
+      // Dust ring rolling out from the last strike, and embers settling into the
+      // scorch mark rather than blinking out on the impact frame.
+      if (release > 0.02) {
+        for (let i = 0; i < 10; i++) {
+          const a = judgment.phase + (i / 10) * Math.PI * 2;
+          const pr = radius * (0.4 + release * 0.62);
+          dustPuff(g, x + Math.cos(a) * pr, y + Math.sin(a) * pr * GROUND_SQUASH, {
+            palette: pal, tone: 4, size: 16 + release * 16,
+            alpha: 0.34 * (1 - release) * fade, lumps: 3, seed: i * 4, squash: 0.6,
+          });
+        }
+      }
+      for (let i = 0; i < 22; i++) {
+        const q = ((i * 17) % 23) / 22;
         const a = judgment.phase + i * 2.13 + release * (i % 2 ? 0.6 : -0.4);
-        const driftR = radius * (0.12 + q * 0.64) * (0.65 + release * 0.35);
-        const lift = (1 - release) * (12 + (i % 7) * 5);
-        const mx = snap(x + Math.cos(a) * driftR);
-        const my = snap(y + Math.sin(a) * driftR * GROUND_SQUASH - lift);
-        const tone = i % 6 === 0 ? 6 : 1 + (i % 5);
-        const moteFade = Math.min(1, burst * 2) * fade * (0.28 + (i % 4) * 0.14);
-        air.fillStyle(JUDGMENT_PALETTE[tone], moteFade);
-        air.fillRect(mx, my, i % 9 === 0 ? P * 2 : P, P * (1 + (i % 2)));
+        const driftR = radius * (0.14 + q * 0.6) * (0.65 + release * 0.35);
+        const emberLift = (1 - release) * (14 + (i % 7) * 6);
+        debrisChunk(air,
+          snap(x + Math.cos(a) * driftR),
+          snap(y + Math.sin(a) * driftR * GROUND_SQUASH - emberLift), {
+            palette: pal, tone: i % 6 === 0 ? 6 : 1 + (i % 4),
+            size: P * (1 + (i % 3)),
+            alpha: Math.min(1, burst * 2) * fade * (0.34 + (i % 4) * 0.15),
+            seed: i * 5, squash: 0.9, spin: Math.floor(judgment.age * 14 + i),
+          });
       }
 
       if (judgment.age < judgment.life) continue;
@@ -983,6 +1037,96 @@ export default class SkillSystem {
       air.destroy();
       this.judgments = this.judgments.filter((j) => j !== judgment);
     }
+  }
+
+  /**
+   * One greatsword, point down, drawn from its tip. A parallel-sided blade with
+   * a real point, a centred fuller, a heavy straight crossguard with drooping
+   * quillons, a wrapped grip and a faceted pommel — so three beats read as one
+   * weapon being driven into the floor three times, not as a beam of light.
+   */
+  #drawJudgmentSword(g, jx, tipY, bladeLen, alpha, punch) {
+    if (alpha <= 0.02) return;
+    const pal = JUDGMENT_PALETTE;
+    const halfW = P * 6;
+    const rows = Math.round(bladeLen / P);
+    const pointRows = Math.round(rows * 0.17);
+
+    // ── blade ────────────────────────────────────────────────────────────
+    for (let i = 0; i < rows; i++) {
+      const yy = snap(tipY - i * P);
+      let w;
+      if (i < pointRows) w = Math.max(P, snap(halfW * (i / pointRows) ** 0.62));
+      else w = Math.max(P, snap(halfW * (1 - ((i - pointRows) / rows) * 0.1)));
+      const x0 = snap(jx - w);
+      const span = w * 2;
+      // body, then the two ground edges: lit on the left, shaded on the right
+      g.fillStyle(shade(pal, 3), alpha * 0.95);
+      g.fillRect(x0, yy, span, P);
+      g.fillStyle(shade(pal, 1), alpha);
+      g.fillRect(x0, yy, P, P);
+      g.fillStyle(shade(pal, 5), alpha * 0.92);
+      g.fillRect(x0 + span - P, yy, P, P);
+      // fuller: a recessed channel down the centre, dark then bright
+      if (w > P * 2 && i > pointRows * 0.7) {
+        g.fillStyle(shade(pal, 5), alpha * 0.75);
+        g.fillRect(snap(jx - P), yy, P * 2, P);
+        g.fillStyle(shade(pal, 0), alpha * 0.85);
+        g.fillRect(snap(jx - P), yy, P, P);
+      }
+      // three struck inscription bands, not a ladder of rungs
+      if (i > pointRows && i % 23 === (punch > 0.5 ? 3 : 9)) {
+        g.fillStyle(shade(pal, 0), alpha * (0.34 + punch * 0.4));
+        g.fillRect(x0 + P, yy, span - P * 2, P);
+      }
+    }
+
+    const guardY = snap(tipY - rows * P);
+    // ── crossguard: a straight bar with drooping quillons ────────────────
+    for (let r = 0; r < 6; r++) {
+      const gw = snap(42 - r * 2);
+      const yy = snap(guardY + r * P - P * 2);
+      g.fillStyle(shade(pal, r === 0 ? 2 : r > 3 ? 5 : 3), alpha);
+      g.fillRect(snap(jx - gw), yy, gw * 2, P);
+      g.fillStyle(shade(pal, r === 0 ? 0 : 4), alpha);
+      g.fillRect(snap(jx - gw), yy, P, P);
+      g.fillRect(snap(jx + gw - P), yy, P, P);
+    }
+    for (const s of [-1, 1]) {
+      solidWedge(g, jx + s * 40, guardY, {
+        palette: pal, tone: 3, angle: s > 0 ? 0.85 : Math.PI - 0.85,
+        r0: 0, r1: 16, w0: P * 4, w1: P,
+        alpha, taper: 1.3, notch: false, seed: s > 0 ? 13 : 14,
+      });
+    }
+    // langets clamping the blade under the guard
+    g.fillStyle(shade(pal, 4), alpha);
+    g.fillRect(snap(jx - halfW - P), snap(guardY + P * 4), (halfW + P) * 2, P * 3);
+    g.fillStyle(shade(pal, 1), alpha);
+    g.fillRect(snap(jx - halfW - P), snap(guardY + P * 4), P * 2, P);
+
+    // ── wrapped grip ─────────────────────────────────────────────────────
+    const gripRows = 15;
+    for (let r = 0; r < gripRows; r++) {
+      const yy = snap(guardY - P * 3 - r * P);
+      const gw = P * (r > gripRows - 3 ? 2 : 3);
+      g.fillStyle(shade(pal, r % 3 === 0 ? 4 : 6), alpha);
+      g.fillRect(snap(jx - gw), yy, gw * 2, P);
+      g.fillStyle(shade(pal, r % 3 === 0 ? 2 : 5), alpha);
+      g.fillRect(snap(jx - gw), yy, P, P);
+    }
+
+    // ── pommel ───────────────────────────────────────────────────────────
+    const pomY = snap(guardY - P * 3 - gripRows * P - P * 3);
+    g.fillStyle(shade(pal, 4), alpha);
+    pxDisc(g, jx, pomY, P * 5, P * 4);
+    g.fillStyle(shade(pal, 2), alpha);
+    pxDisc(g, snap(jx - P), snap(pomY - P), P * 3, P * 2);
+    g.fillStyle(shade(pal, 0), alpha);
+    g.fillRect(snap(jx - P), snap(pomY - P * 2), P * 2, P);
+    runeGlyph(g, jx, pomY, {
+      palette: pal, tone: 0, size: 5, alpha: alpha * (0.6 + punch * 0.4), variant: 1,
+    });
   }
 
   #startBlizzard(hero, spots, eff) {
@@ -997,8 +1141,11 @@ export default class SkillSystem {
         interval: eff.tick, mult: eff.tickMult, slowMult: eff.slowMult, slowSeconds: eff.slowSeconds,
         vx: Phaser.Math.FloatBetween(26, 42) * (Math.random() < 0.5 ? -1 : 1),
         vy: Phaser.Math.FloatBetween(18, 34) * (Math.random() < 0.5 ? -1 : 1),
-        spin: Phaser.Math.FloatBetween(0, Math.PI * 2), age: 0,
+        spin: Phaser.Math.FloatBetween(0, Math.PI * 2), age: 0, redraw: 0,
         gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
+        // The drift and scour the column carves belong on the floor, under the
+        // monsters it is freezing — the column itself stays in the air layer.
+        gfxBack: this.scene.add.graphics().setDepth(DEPTH.telegraphGround),
       };
       this.blizzards.push(storm);
       this.scene.fx.skillBurst(storm.x, storm.y, 0xa9f5ff, 'rune');
@@ -1029,8 +1176,18 @@ export default class SkillSystem {
       }
 
       const g = storm.gfx;
-      g.clear();
-      this.#drawBlizzardVortex(g, storm);
+      const back = storm.gfxBack;
+      // The column is expensive and up to five of them run at once, so it is
+      // re-rasterised on its own ~26 Hz beat instead of every frame. A vortex
+      // stepping on a slightly coarser clock also looks more hand-animated; the
+      // few pixels of lag against its own drift are invisible.
+      storm.redraw -= dt;
+      if (storm.redraw <= 0) {
+        storm.redraw += 1 / 26;
+        g.clear();
+        back.clear();
+        this.#drawBlizzardVortex(g, back, storm);
+      }
       if (storm.tick <= 0) {
         storm.tick = storm.interval;
         for (const m of this.scene.combat.monstersInCircle(storm.x, storm.y, storm.r)) {
@@ -1040,53 +1197,185 @@ export default class SkillSystem {
       }
       if (storm.left > 0) continue;
       g.destroy();
+      back.destroy();
       this.blizzards = this.blizzards.filter((s) => s !== storm);
     }
   }
 
-  /** A tapered column of rotating pixel arcs — readable as a tornado at a glance. */
-  #drawBlizzardVortex(g, storm) {
+  /**
+   * A cyclone of snow rather than a stack of arcs.
+   *
+   * Floor: a scoured drift with counter-rotating bands and tangential wind
+   * streaks, so the ground shows which way the air is turning. Air: a shadowed
+   * eye with six shells of wind wrapped around it — tight at the floor, flared
+   * into a flat crown — plus ice torn loose and thrown around the outside. It
+   * spins up over the first half-second and unravels over the last one, so the
+   * storm has a beginning and an end instead of popping in and out.
+   */
+  #drawBlizzardVortex(g, back, storm) {
     const x = snap(storm.x);
     const y = snap(storm.y);
-    // Wide, faint ground circulation conveys the actual damaging/slow area.
-    g.fillStyle(0x91eaff, 0.09);
-    pxGroundRing(g, x, y + 5, storm.r * 0.9, { dash: 5, gap: 4, rot: Math.floor(storm.age * 8) });
-    g.fillStyle(0x4e98c8, 0.24);
-    pxGroundRing(g, x, y + 5, 27, { dash: 3, gap: 2, rot: -Math.floor(storm.age * 12) });
+    const pal = NOVA_ICE_PALETTE;
+    const spin = storm.spin;
 
-    // Bottom is a tight funnel; each higher band is wider and shifted, making
-    // a true spiralling cone rather than a circular damage marker.
-    for (let band = 0; band < 5; band++) {
-      const q = band / 4;
-      const py = y + 16 - q * 58;
-      const width = 10 + q * 31;
-      const phase = storm.spin + band * 1.15;
-      g.fillStyle(band % 2 ? 0xd9fbff : 0x72cbed, 0.86 - band * 0.08);
-      pxArc(g, x + Math.sin(phase) * 6, py, width, 4 + q * 4, {
-        from: phase + 0.3, to: phase + Math.PI * 1.32, dash: 8, gap: 2, rot: storm.age * 5,
+    const open = Phaser.Math.Clamp(storm.age / 0.55, 0, 1);
+    const close = Phaser.Math.Clamp(storm.left / 0.5, 0, 1);
+    const power = open * close;
+    if (power <= 0.02) return;
+    const H = 94 * (0.42 + power * 0.58); // column height
+    const R = 47 * (0.48 + power * 0.52); // crown radius
+
+    // ── floor: packed drift, then the scour marks the rotation leaves ────────
+    back.fillStyle(shade(pal, 7), 0.15 * power);
+    pxDisc(back, x, y + 4, storm.r * 0.94, storm.r * 0.94 * GROUND_SQUASH, { every: 3 });
+    back.fillStyle(shade(pal, 4), 0.15 * power);
+    pxDisc(back, x, y + 4, 30, 30 * GROUND_SQUASH, { every: 2 });
+
+    // Counter-rotating partial bands. Complete rings would read as a damage
+    // marker — that is the telegraph's job, not the storm's.
+    for (let s = 0; s < 3; s++) {
+      const rr = storm.r * (0.94 - s * 0.3);
+      const dir = s % 2 ? -1 : 1;
+      const from = spin * dir * (0.45 + s * 0.2) + s * 2.1;
+      groundBand(back, x, y + 4, rr, {
+        palette: pal, tone: s === 1 ? 2 : 6,
+        thickness: P * (s === 1 ? 3 : 2),
+        alpha: (s === 1 ? 0.5 : 0.3) * power, bite: 1.6, seed: s * 5,
+        arcFrom: from, arcTo: from + Math.PI * (1.05 + s * 0.28),
       });
-      g.fillStyle(0xffffff, 0.5);
-      pxArc(g, x - Math.sin(phase) * 5, py - 2, width * 0.68, 3 + q * 3, {
-        from: phase + Math.PI * 0.72, to: phase + Math.PI * 1.55, dash: 5, gap: 3, rot: -storm.age * 7,
+    }
+    // Tangential streaks: snow being dragged around, not radial spokes.
+    for (let i = 0; i < 5; i++) {
+      const a = spin * 0.55 + (i / 5) * Math.PI * 2;
+      const rr = storm.r * (0.52 + ((i * 3) % 7) / 17);
+      solidWedge(back, x + Math.cos(a) * rr, y + 4 + Math.sin(a) * rr * GROUND_SQUASH, {
+        palette: pal, tone: 4 + (i % 3), angle: a + Math.PI * 0.5,
+        r0: 0, r1: 19 + (i % 4) * 7, w0: P * 2, w1: P,
+        alpha: 0.34 * power, squash: GROUND_SQUASH,
+        taper: 1.4, notch: false, seed: i * 4,
+      });
+    }
+    for (let i = 0; i < 3; i++) {
+      const a = -spin * 0.45 + (i / 3) * Math.PI * 2;
+      dustPuff(back,
+        x + Math.cos(a) * storm.r * 0.68,
+        y + 6 + Math.sin(a) * storm.r * 0.68 * GROUND_SQUASH, {
+          palette: pal, tone: 6, size: 14 + (i % 2) * 5,
+          alpha: 0.26 * power, lumps: 3, seed: i * 6,
+        });
+    }
+
+    // ── the eye: a shadowed core for the shells to wrap ─────────────────────
+    pillarForm(g, x, y + 6, {
+      palette: pal, tone: 7, height: H * 0.9, width: 9 + power * 7,
+      alpha: 0.45 * power, grow: 1, facets: 3, flare: 1.7, taper: 0.5,
+      bandEvery: 5, bandPhase: Math.floor(storm.age * 26),
+      topFade: 0.5, dissolve: 0.45, seed: 11,
+    });
+
+    // ── five shells of wind, bottom first so the column stacks correctly ────
+    // Mid tones on the body, highlights only on the outer crest: a column made
+    // entirely of the bright end of the ramp reads as one white smear.
+    for (let b = 0; b < 5; b++) {
+      const q = b / 4;
+      const sx = snap(x + Math.sin(spin * 0.5 + q * 2.4) * (4 + q * 9));
+      const sy = snap(y + 10 - q * H);
+      const rr = R * (0.22 + 0.78 * q ** 0.9);
+      const sq = 0.4 + q * 0.13;
+      const th = P * 2 + q * P * 3;
+      const phase = spin * (1.55 - q * 0.5) + b * 1.05;
+
+      // far side first, in the shadow tones, so the near sweep sits over it
+      solidArcBand(g, sx, sy, {
+        palette: pal, tone: 7, from: phase + Math.PI * 1.3,
+        to: phase + Math.PI * 2.15, r: rr, thickness: th * 0.8,
+        alpha: 0.55 * power, squash: sq, taperEnds: 0.4, glint: false, seed: b * 3,
+      });
+      solidArcBand(g, sx, sy, {
+        palette: pal, tone: 4 + (b % 2), from: phase, to: phase + Math.PI * 1.34,
+        r: rr, thickness: th, alpha: (0.92 - q * 0.12) * power,
+        squash: sq, taperEnds: 0.5, seed: b * 3 + 1,
+      });
+      // one bright thread low in the column, where the wind is fastest
+      if (b % 3 === 0) {
+        solidArcBand(g, sx, sy, {
+          palette: pal, tone: 2, from: phase + Math.PI * 0.75,
+          to: phase + Math.PI * 1.5, r: rr * 0.52, thickness: P * 2,
+          alpha: 0.6 * power, squash: sq, taperEnds: 0.6, glint: false, seed: b * 7,
+        });
+      }
+    }
+
+    // ── crown: the flat cloud lid the column feeds ──────────────────────────
+    const crownY = snap(y + 10 - H);
+    solidArcBand(g, x, crownY, {
+      palette: pal, tone: 6, from: 0, to: Math.PI * 2, r: R * 1.16,
+      thickness: P * 3, alpha: 0.5 * power, squash: 0.34,
+      taperEnds: 0, glint: false, seed: 21,
+    });
+    solidArcBand(g, x, crownY, {
+      palette: pal, tone: 3, from: spin * 0.4, to: spin * 0.4 + Math.PI * 0.9,
+      r: R * 1.16, thickness: P * 3, alpha: 0.8 * power, squash: 0.34, seed: 22,
+    });
+    for (let i = 0; i < 3; i++) {
+      const a = spin * 0.4 + (i / 3) * Math.PI * 2;
+      dustPuff(g, x + Math.cos(a) * R * 0.95, crownY + Math.sin(a) * R * 0.32, {
+        palette: pal, tone: 5, size: 15 + (i % 2) * 6,
+        alpha: 0.42 * power, lumps: 3, seed: i * 9 + 2,
       });
     }
 
-    // Ice fragments orbit at different heights; their asymmetric paths make
-    // the vortex feel violent instead of like a looping halo.
-    for (let i = 0; i < 12; i++) {
+    // ── torn ice: chunks on the orbit, whole shards flung out at the rim ────
+    for (let i = 0; i < 10; i++) {
       const q = (i % 5) / 4;
-      const a = storm.spin * (1.7 + q) + i * 1.91;
-      const radius = 12 + q * 35;
-      const px = snap(x + Math.cos(a) * radius);
-      const py = snap(y + 14 - q * 58 + Math.sin(a) * 7);
-      g.fillStyle(i % 3 === 0 ? 0xffffff : 0x8deaff, 0.78);
-      g.fillRect(px, py, P * (i % 3 === 0 ? 2 : 1), P * 2);
+      const a = spin * (1.6 + q) + i * 1.91;
+      const rad = R * (0.3 + q * 0.88);
+      debrisChunk(g,
+        snap(x + Math.cos(a) * rad),
+        snap(y + 12 - q * H + Math.sin(a) * rad * 0.34), {
+          palette: pal, tone: 3 + (i % 3), size: 5 + (i % 3) * 3,
+          alpha: (0.9 - q * 0.12) * power, seed: i * 5, spin: Math.floor(spin * 3 + i),
+        });
     }
-    // Cold lightning stitches the funnel to the ground every other beat.
-    if (Math.floor(storm.age * 6) % 2 === 0) {
-      g.fillStyle(0xe9ffff, 0.72);
-      pxLine(g, x - 4, y - 35, x + 4, y - 16);
-      pxLine(g, x + 4, y - 16, x - 2, y + 5);
+    for (let i = 0; i < 4; i++) {
+      const a = -spin * 1.2 + (i / 4) * Math.PI * 2;
+      const q = ((i * 2) % 5) / 4;
+      const rad = R * (0.85 + q * 0.4);
+      this.#drawLanceCrystal(g,
+        snap(x + Math.cos(a) * rad),
+        snap(y + 14 - q * H * 0.8), {
+          height: 17 + (i % 3) * 7, width: 8 + (i % 2) * 3,
+          tone: 3 + (i % 3), lean: Math.cos(a) * 13, grow: 1, alpha: 0.9 * power,
+        });
+    }
+
+    // ── base spray + cold lightning stitching the funnel to the floor ───────
+    for (let i = 0; i < 4; i++) {
+      const a = spin * 0.9 + (i / 4) * Math.PI * 2;
+      shardFan(g, x + Math.cos(a) * 12, y + 12 + Math.sin(a) * 6, {
+        palette: pal, tone: 2 + (i % 3), angle: a, spread: 0.5, count: 2,
+        r0: 4, r1: 22 + (i % 3) * 8, alpha: 0.55 * power,
+        squash: GROUND_SQUASH, seed: i * 3, width: P * 2,
+      });
+    }
+    const beat = Math.floor(storm.age * 6);
+    if (beat % 2 === 0) {
+      const side = beat % 4 === 0 ? 1 : -1;
+      let bx = x + side * 8;
+      let by = crownY + 12;
+      for (let s = 0; s < 3; s++) {
+        const nx = x + side * (s % 2 === 0 ? -7 : 9) + side * s * 3;
+        const ny = by + (y + 6 - by) / (3 - s);
+        solidWedge(g, bx, by, {
+          palette: pal, tone: s === 0 ? 0 : 1,
+          angle: Math.atan2(ny - by, nx - bx),
+          r0: 0, r1: Math.hypot(nx - bx, ny - by),
+          w0: P * 2, w1: P, alpha: 0.8 * power,
+          taper: 1, notch: false, seed: s * 6,
+        });
+        bx = nx;
+        by = ny;
+      }
     }
   }
 
@@ -1188,113 +1477,149 @@ export default class SkillSystem {
     }
   }
 
-  /** Expanding spiral blades, explosion peak, then a long particle dissolve. */
+  /**
+   * A cyclone with a body. Six blade shells stack into a funnel that widens as
+   * it rises, debris is carried up the column, two bright sword trails cut
+   * through it at chest height, and the last beat blows the whole shell outward
+   * as solid rings and shards instead of flashing a star.
+   */
   #drawWhirlwind(g, air, spin) {
+    const pal = WHIRLWIND_PALETTE;
     const x = snap(spin.x);
     const y = snap(spin.y);
-    const a = spin.age * 12.5;
+    const groundY = snap(spin.y + 11);
+    const rot = spin.age * 11;
     const stepIndex = Math.min(Math.max(0, spin.beat), spin.steps.length - 1);
     const targetReach = spin.radius * (spin.steps[stepIndex] ?? 1);
-    const windup = Phaser.Math.Clamp(spin.age / 0.22, 0, 1);
-    const reach = targetReach * (0.28 + windup * 0.72);
+    const windup = Phaser.Math.Clamp(spin.age / 0.24, 0, 1);
+    const reach = targetReach * (0.3 + windup * 0.7);
     const tailP = spin.lastBeatAt === null
       ? 0
       : Phaser.Math.Clamp((spin.age - spin.lastBeatAt) / spin.fxTail, 0, 1);
-    const vortexFade = spin.lastBeatAt === null ? 1 : Math.max(0, 1 - tailP * 1.25);
+    const fade = spin.lastBeatAt === null ? 1 : Math.max(0, 1 - tailP * 1.2);
 
-    // Three ground seals counter-rotate at different speeds. The outer ring is
-    // sparse during wind-up, then fills as the damaging radius expands.
-    g.fillStyle(WHIRLWIND_PALETTE[5], 0.2 * vortexFade);
-    pxDisc(g, x, y + 4, reach * 0.92, reach * 0.92 * GROUND_SQUASH, { every: 5 });
-    g.fillStyle(WHIRLWIND_PALETTE[3], 0.42 * vortexFade);
-    pxGroundRing(g, x, y + 4, reach, {
-      dash: 7, gap: 5, rot: Math.floor(spin.age * 18),
-    });
-    g.fillStyle(WHIRLWIND_PALETTE[2], 0.34 * vortexFade);
-    pxGroundRing(g, x, y + 4, reach * 0.68, {
-      dash: 4, gap: 3, rot: -Math.floor(spin.age * 24),
-    });
-    g.fillStyle(WHIRLWIND_PALETTE[6], 0.46 * vortexFade);
-    pxGroundRing(g, x, y + 4, reach * 0.26, {
-      dash: 2, gap: 2, rot: Math.floor(spin.age * 31),
-    });
-
-    // Sixteen curved blades form the spiral. Each blade is a chain of short
-    // pixel lines whose angle bends as it moves outward, producing the hooked
-    // wind strokes visible in the reference rather than simple circular arcs.
-    const bladeCount = 16;
-    const bladeSteps = 7;
-    for (let blade = 0; blade < bladeCount; blade++) {
-      const base = a + (blade / bladeCount) * Math.PI * 2;
-      let px0 = x;
-      let py0 = y - 8;
-      for (let s = 0; s <= bladeSteps; s++) {
-        const q = s / bladeSteps;
-        const br = reach * (0.16 + q * 0.82);
-        const ba = base + q * (0.72 + (blade % 3) * 0.08);
-        const px1 = snap(x + Math.cos(ba) * br);
-        const py1 = snap(y - 8 + Math.sin(ba) * br * GROUND_SQUASH);
-        if (s > 0) {
-          const tone = Math.min(WHIRLWIND_PALETTE.length - 2, 1 + (blade + s) % 5);
-          air.fillStyle(WHIRLWIND_PALETTE[tone], (0.48 + q * 0.46) * vortexFade);
-          pxLine(air, px0, py0, px1, py1);
-          if (s >= bladeSteps - 2 && blade % 2 === 0) {
-            air.fillStyle(WHIRLWIND_PALETTE[0], (0.54 + q * 0.35) * vortexFade);
-            pxStar(air, px1, py1, s === bladeSteps ? P * 2 : P);
-          }
-        }
-        px0 = px1;
-        py0 = py1;
+    // ── the floor being scoured ───────────────────────────────────────────
+    if (fade > 0) {
+      g.fillStyle(shade(pal, 6), 0.16 * fade);
+      pxDisc(g, x, groundY, reach * 0.95, reach * 0.95 * GROUND_SQUASH, { every: 4 });
+      groundBand(g, x, groundY, reach, {
+        palette: pal, tone: 3, thickness: P * 3, alpha: 0.52 * fade, bite: 1.4, seed: 3,
+      });
+      groundBand(g, x, groundY, reach * (0.52 + 0.06 * Math.sin(rot * 0.5)), {
+        palette: pal, tone: 2, thickness: P * 2, alpha: 0.4 * fade, bite: 1, seed: 8,
+      });
+      for (let i = 0; i < 9; i++) {
+        const ca = (i / 9) * Math.PI * 2 - rot * 0.09;
+        groundCrack(g,
+          x + Math.cos(ca) * reach * 0.2,
+          groundY + Math.sin(ca) * reach * 0.2 * GROUND_SQUASH, {
+            palette: pal, tone: 5, angle: ca,
+            length: reach * (0.48 + (i % 3) * 0.17),
+            alpha: 0.42 * fade, reveal: windup, seed: i * 4 + 2,
+            branches: 1, width: P * 2,
+          });
       }
     }
 
-    // Broken outer crescents add the translucent frame-to-frame echoes around
-    // the main vortex without closing it into a perfect circular border.
-    for (let echo = 0; echo < 5; echo++) {
-      const er = reach * (0.74 + echo * 0.055);
-      const from = -a * 0.34 + echo * 1.31;
-      air.fillStyle(WHIRLWIND_PALETTE[3 + (echo % 3)], (0.24 - echo * 0.025) * vortexFade);
-      pxArc(air, x, y - 8, er, er * GROUND_SQUASH, {
-        from, to: from + Math.PI * (0.34 + echo * 0.025),
-        dash: 4, gap: 3,
+    // ── the funnel: shells that widen as they rise ────────────────────────
+    // Each shell is a thick swung band drawn as a partial sweep, so the near
+    // side reads in front of the Knight and the far side behind him.
+    const shells = 6;
+    for (let s = 0; s < shells; s++) {
+      const q = s / (shells - 1);
+      const sr = reach * (0.3 + q * 0.72);
+      const sy = y + 8 - q * 46;
+      const speed = 1 + q * 0.45;
+      const from = rot * speed + s * 1.9;
+      solidArcBand(air, x, sy, {
+        palette: pal, tone: 1 + (s % 3),
+        from, to: from + Math.PI * (1.05 + q * 0.35),
+        r: sr, thickness: P * (4 - Math.round(q * 1.6)),
+        alpha: (0.9 - q * 0.28) * fade,
+        squash: GROUND_SQUASH * (1 - q * 0.2),
+        taperEnds: 0.7, seed: s * 3 + 1,
+      });
+      // the trailing half of the same shell, dimmer: the wrap-around
+      solidArcBand(air, x, sy, {
+        palette: pal, tone: 4 + (s % 2),
+        from: from + Math.PI * 1.2, to: from + Math.PI * 1.95,
+        r: sr * 0.97, thickness: P * 2,
+        alpha: (0.4 - q * 0.12) * fade,
+        squash: GROUND_SQUASH * (1 - q * 0.2),
+        taperEnds: 0.5, glint: false, seed: s * 3 + 9,
       });
     }
 
-    // The final combat beat peaks as a white-blue explosion inside the still
-    // rotating blades, then collapses into gold and blue fragments.
-    if (spin.lastBeatAt !== null) {
-      const since = spin.age - spin.lastBeatAt;
-      const peak = Math.max(0, 1 - since / 0.34);
-      if (peak > 0) {
-        const coreR = spin.radius * (0.12 + (1 - peak) * 0.34);
-        air.fillStyle(WHIRLWIND_PALETTE[1], 0.82 * peak);
-        pxDisc(air, x, y - 8, coreR, coreR * GROUND_SQUASH, { every: peak < 0.45 ? 2 : 1 });
-        air.fillStyle(WHIRLWIND_PALETTE[0], 0.96 * peak);
-        pxStar(air, x, y - 8, P * (5 + Math.round(peak * 8)));
-        for (let i = 0; i < 20; i++) {
-          const ra = a * 0.28 + (i / 20) * Math.PI * 2;
-          const len = spin.radius * (0.22 + (i % 5) * 0.045) * peak;
-          pxLine(air, x, y - 8,
-            x + Math.cos(ra) * len,
-            y - 8 + Math.sin(ra) * len * 0.72);
-        }
-      }
+    // Debris pulled off the floor and carried up the funnel. Height is tied to
+    // its own phase, so the column always has chunks at every altitude.
+    for (let i = 0; i < 16; i++) {
+      const lift = ((spin.age * 0.9 + i * 0.11) % 1);
+      const da = rot * (1.15 + (i % 3) * 0.12) + i * 2.3;
+      const dr = reach * (0.34 + lift * 0.6);
+      debrisChunk(air,
+        x + Math.cos(da) * dr,
+        y + 8 - lift * 52 + Math.sin(da) * dr * GROUND_SQUASH * 0.5, {
+          palette: pal, tone: 3 + (i % 3),
+          size: P * (2 + (i % 3)) * (1 - lift * 0.35),
+          alpha: (0.85 - lift * 0.5) * fade, seed: i * 5,
+          spin: Math.floor(spin.age * 24 + i),
+        });
     }
 
-    // Dense motes provide the long dissolve frames: mostly frost-blue during
-    // the spin, with warm sparks appearing only after the explosion peak.
-    const moteCount = 58;
-    const moteAlpha = spin.lastBeatAt === null ? 0.55 : (1 - tailP) * 0.82;
-    for (let i = 0; i < moteCount; i++) {
-      const q = ((i * 23) % 59) / 58;
-      const ma = spin.phase + i * 2.19 + spin.age * (2.2 + (i % 3));
-      const spread = reach * (0.18 + q * (0.7 + tailP * 0.55));
-      const mx = snap(x + Math.cos(ma) * spread);
-      const my = snap(y - 8 + Math.sin(ma) * spread * GROUND_SQUASH - tailP * (i % 5) * 5);
-      const warm = spin.lastBeatAt !== null && i % 7 === 0;
-      const tone = warm ? 7 : 1 + (i % 6);
-      air.fillStyle(WHIRLWIND_PALETTE[tone], moteAlpha * (0.32 + (i % 4) * 0.14));
-      air.fillRect(mx, my, i % 11 === 0 ? P * 2 : P, P * (1 + (i % 2)));
+    // Two bright sword trails at chest height — the actual weapon inside the
+    // wind, so the cyclone reads as something the Knight is doing.
+    for (const s of [0, 1]) {
+      const from = -rot * 1.9 + s * Math.PI;
+      solidArcBand(air, x, y - 4, {
+        palette: pal, tone: 0,
+        from, to: from + Math.PI * 0.62,
+        r: reach * 0.86, thickness: P * 3,
+        alpha: 0.92 * fade, squash: GROUND_SQUASH * 0.9,
+        taperEnds: 1.1, seed: 21 + s,
+      });
+    }
+
+    // ── the final beat: the shell blows outward ───────────────────────────
+    if (spin.lastBeatAt !== null) {
+      const since = spin.age - spin.lastBeatAt;
+      const peak = Math.max(0, 1 - since / 0.42);
+      if (peak > 0) {
+        const blastR = spin.radius * (0.4 + (1 - peak) * 0.85);
+        solidArcBand(air, x, y - 2, {
+          palette: pal, tone: 0,
+          from: 0, to: Math.PI * 2,
+          r: blastR, thickness: P * (2 + Math.round(peak * 5)),
+          alpha: 0.9 * peak, squash: GROUND_SQUASH,
+          taperEnds: 0, seed: 33,
+        });
+        solidArcBand(air, x, y - 2, {
+          palette: pal, tone: 3,
+          from: 0, to: Math.PI * 2,
+          r: blastR * 0.72, thickness: P * 3,
+          alpha: 0.6 * peak, squash: GROUND_SQUASH,
+          taperEnds: 0, glint: false, seed: 34,
+        });
+        for (let i = 0; i < 12; i++) {
+          const ba = (i / 12) * Math.PI * 2 + rot * 0.1;
+          shardFan(air, x + Math.cos(ba) * blastR * 0.5,
+            y - 2 + Math.sin(ba) * blastR * 0.5 * GROUND_SQUASH, {
+              palette: pal, tone: 1 + (i % 3), angle: ba, spread: 0.5,
+              count: 3, r0: 0, r1: 26 * peak + 8, alpha: 0.9 * peak,
+              squash: GROUND_SQUASH, seed: i, width: P * 3,
+            });
+        }
+      }
+      // Dust ring settling after the blast — the long dissolve.
+      if (tailP > 0.1) {
+        for (let i = 0; i < 10; i++) {
+          const pa = (i / 10) * Math.PI * 2 + 0.3;
+          const pr = spin.radius * (0.55 + tailP * 0.6);
+          dustPuff(g, x + Math.cos(pa) * pr, groundY + Math.sin(pa) * pr * GROUND_SQUASH, {
+            palette: pal, tone: 4, size: 16 + tailP * 14,
+            alpha: 0.4 * (1 - tailP), lumps: 3, seed: i * 3, squash: 0.6,
+          });
+        }
+      }
     }
   }
 
@@ -1341,138 +1666,190 @@ export default class SkillSystem {
     }
   }
 
-  /** Ground blessing, body-wrapping halos, rising light and a lasting gold glow. */
+  /**
+   * A knighting, not a ring. The floor takes a struck seal ringed with runes, a
+   * faceted pillar of light stands up behind the Knight, two wings of light open
+   * at his shoulders on the invocation, and a crown of eight blades hangs above
+   * his head for as long as the blessing lasts.
+   */
   #drawValorAura(g, back, air, aura) {
     const { hero } = aura;
+    const pal = VALOR_PALETTE;
     const x = snap(hero.x);
     const y = snap(hero.y);
     const h = hero.spriteHeight;
     const chestY = snap(y - h * 0.5);
+    const headY = snap(y - h * 1.02);
     const pulse = 0.5 + 0.5 * Math.sin(aura.age * 3.4);
     const introP = Phaser.Math.Clamp(aura.age / aura.intro, 0, 1);
     const introPower = 1 - introP;
-    const haloOpen = Phaser.Math.Clamp(introP * 1.8, 0, 1);
+    const open = Phaser.Math.Clamp(introP * 1.8, 0, 1);
 
+    // ── the struck seal ───────────────────────────────────────────────────
     g.clear();
-    // The seal expands quickly on cast, then remains as three counter-rotating
-    // rings so the long-lived buff is always readable at the Knight's feet.
-    const sealR = 30 + haloOpen * 24;
-    g.fillStyle(VALOR_PALETTE[5], 0.11 + pulse * 0.04);
-    pxDisc(g, x, y + 2, sealR * 0.84, sealR * 0.84 * GROUND_SQUASH, { every: 3 });
-    g.fillStyle(VALOR_PALETTE[3], 0.42 + pulse * 0.16);
-    pxGroundRing(g, x, y + 2, sealR, { dash: 5, gap: 2, rot: Math.floor(aura.age * 11) });
-    g.fillStyle(VALOR_PALETTE[1], 0.33 + pulse * 0.14);
-    pxGroundRing(g, x, y + 2, sealR * 0.72, { dash: 2, gap: 2, rot: -Math.floor(aura.age * 15) });
-    g.fillStyle(VALOR_PALETTE[4], 0.38);
-    pxGroundRing(g, x, y + 2, sealR * 0.42, { dash: 1, gap: 2, rot: Math.floor(aura.age * 18) });
-
-    // The first frames erupt into the jagged sunburst seen in the reference.
-    if (introPower > 0) {
-      const burstR = 24 + introP * 52;
-      for (let i = 0; i < 16; i++) {
-        const a = (i / 16) * Math.PI * 2;
-        const inner = 12 + (i % 2) * 6;
-        const outer = burstR * (0.72 + (i % 4) * 0.09);
-        g.fillStyle(VALOR_PALETTE[i % 3], (0.38 + (i % 3) * 0.12) * introPower);
-        pxLine(g,
-          x + Math.cos(a) * inner, y + Math.sin(a) * inner * GROUND_SQUASH,
-          x + Math.cos(a) * outer, y + Math.sin(a) * outer * GROUND_SQUASH);
-      }
-      g.fillStyle(VALOR_PALETTE[0], 0.8 * introPower);
-      pxStar(g, x, y - 1, P * (3 + Math.round(introPower * 3)));
+    const sealR = 30 + open * 24;
+    g.fillStyle(shade(pal, 6), 0.12 + pulse * 0.04);
+    pxDisc(g, x, y + 2, sealR * 0.86, sealR * 0.86 * GROUND_SQUASH, { every: 3 });
+    groundBand(g, x, y + 2, sealR, {
+      palette: pal, tone: 3, thickness: P * 3,
+      alpha: 0.6 + pulse * 0.18, bite: 1.1, seed: 4,
+    });
+    groundBand(g, x, y + 2, sealR * 0.58, {
+      palette: pal, tone: 2, thickness: P * 2,
+      alpha: 0.45 + pulse * 0.14, bite: 0.7, seed: 11,
+    });
+    // Eight runes ride the seal, turning slowly — writing, not a dashed line.
+    const runeSpin = aura.age * 0.55;
+    for (let i = 0; i < 8; i++) {
+      const a = runeSpin + (i / 8) * Math.PI * 2;
+      runeGlyph(g,
+        x + Math.cos(a) * sealR * 0.79,
+        y + 2 + Math.sin(a) * sealR * 0.79 * GROUND_SQUASH, {
+          palette: pal, tone: 1, size: 7 + (i % 2) * 2,
+          alpha: (0.5 + pulse * 0.35) * open, variant: i % 6,
+        });
+    }
+    // The invocation cracks the flagstones outward once, and they stay cracked.
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.4;
+      groundCrack(g, x + Math.cos(a) * sealR * 0.3, y + 2 + Math.sin(a) * sealR * 0.3 * GROUND_SQUASH, {
+        palette: pal, tone: 5, angle: a, length: sealR * (0.7 + (i % 3) * 0.2),
+        alpha: 0.3 + introPower * 0.3, reveal: open, seed: i * 6 + 1,
+        branches: 1, width: P * 2,
+      });
     }
 
     back.clear();
     air.clear();
 
-    // A layered pillar rises behind the Knight during the cast. Its hard-edged
-    // bands echo the reference's white centre and progressively darker gold rim
-    // without introducing a smooth, non-pixel-art gradient.
-    if (introPower > 0) {
-      const shaftRise = Phaser.Math.Clamp(aura.age / (aura.intro * 0.62), 0, 1);
-      const shaftTop = snap(y - (h + 46) * shaftRise);
-      const shaftHeight = Math.max(P, y - shaftTop);
-      back.fillStyle(VALOR_PALETTE[5], 0.12 * introPower);
-      back.fillRect(x - P * 8, shaftTop, P * 16, shaftHeight);
-      back.fillStyle(VALOR_PALETTE[3], 0.2 * introPower);
-      back.fillRect(x - P * 5, shaftTop, P * 10, shaftHeight);
-      back.fillStyle(VALOR_PALETTE[1], 0.36 * introPower);
-      back.fillRect(x - P * 2, shaftTop, P * 4, shaftHeight);
-      back.fillStyle(VALOR_PALETTE[0], 0.7 * introPower);
-      back.fillRect(x - P / 2, shaftTop, P, shaftHeight);
+    // ── the pillar ────────────────────────────────────────────────────────
+    // Full and faceted while the blessing lands, then held as a thin banded
+    // shaft so the permanent buff never stops being visible.
+    const rise = Phaser.Math.Clamp(aura.age / (aura.intro * 0.55), 0, 1);
+    pillarForm(back, x, y + 2, {
+      palette: pal, tone: 1,
+      height: h + 74, width: 6 + introPower * 18,
+      alpha: 0.16 + introPower * 0.62, grow: rise,
+      facets: 4, flare: 2.1, taper: 0.5,
+      bandEvery: 7, bandPhase: Math.floor(aura.age * 12),
+      topFade: 0.46, dissolve: 0.55, seed: 3,
+    });
+
+    // ── wings of light, only during the invocation ────────────────────────
+    // Five pinions a side, longest through the middle, swept from up-and-out
+    // to down-and-out so the pair reads as a spread wing rather than a fan of
+    // spikes. Tones stay in the bright half of the ramp — these are light.
+    if (introPower > 0.02) {
+      const wingSpan = 30 + introP * 54;
+      for (const s of [-1, 1]) {
+        for (let f = 0; f < 5; f++) {
+          const q = f / 4;
+          const bell = Math.sin(Math.PI * (0.24 + q * 0.62));
+          const out = -0.95 + q * 1.24;
+          solidWedge(air, x + s * P * 3, chestY - P * 4 + f * P * 3, {
+            palette: pal, tone: f === 0 || f === 4 ? 4 : 3,
+            angle: s > 0 ? out : Math.PI - out,
+            r0: P * 2, r1: wingSpan * (0.62 + bell * 0.5),
+            w0: P * 5, w1: P, alpha: introPower * (0.95 - q * 0.15),
+            taper: 1.6, seed: f * 3 + (s > 0 ? 0 : 7),
+          });
+        }
+        // A shoulder coverts block ties the pinions back to the body.
+        solidWedge(air, x + s * P, chestY - P, {
+          palette: pal, tone: 3,
+          angle: s > 0 ? -0.35 : Math.PI + 0.35,
+          r0: 0, r1: wingSpan * 0.34, w0: P * 8, w1: P * 3,
+          alpha: introPower * 0.75, taper: 1.2, seed: s > 0 ? 21 : 22,
+        });
+      }
     }
 
-    // Three horizontal halos climb into position during the invocation. Drawing
-    // their upper and lower halves on opposite depths makes them encircle the
-    // character instead of reading as a straight line across the sprite.
+    // ── the crown: eight blades hanging over the head ────────────────────
+    const crownR = 15 + open * 7;
+    const crownSpin = aura.age * 1.15;
+    for (let i = 0; i < 8; i++) {
+      const a = crownSpin + (i / 8) * Math.PI * 2;
+      const tall = i % 2 === 0;
+      solidWedge(air, x + Math.cos(a) * crownR, headY + Math.sin(a) * crownR * 0.4, {
+        palette: pal, tone: tall ? 1 : 3,
+        angle: -Math.PI / 2, r0: 0, r1: (tall ? 15 : 9) * open,
+        w0: P * 3, w1: P, alpha: (0.55 + pulse * 0.4) * open,
+        taper: 1.5, seed: i,
+      });
+    }
+    solidArcBand(air, x, headY, {
+      palette: pal, tone: 2, from: 0, to: Math.PI * 2,
+      r: crownR, thickness: P * 2, alpha: (0.5 + pulse * 0.3) * open,
+      squash: 0.4, taperEnds: 0, glint: false, seed: 17,
+    });
+
+    // ── body halos: solid bands, split around the Knight ─────────────────
     const haloSpecs = [
-      { y: 0.72, rx: 37, ry: 8, speed: 9 },
-      { y: 0.48, rx: 45, ry: 10, speed: -7 },
-      { y: 0.25, rx: 34, ry: 7, speed: 12 },
+      { y: 0.72, r: 37, speed: 9 },
+      { y: 0.48, r: 45, speed: -7 },
+      { y: 0.25, r: 34, speed: 12 },
     ];
     for (let i = 0; i < haloSpecs.length; i++) {
       const spec = haloSpecs[i];
-      const ringY = snap(y - h * spec.y + (1 - haloOpen) * 24);
-      const rx = spec.rx * (0.55 + haloOpen * 0.45) * (0.96 + pulse * 0.06);
-      const alpha = (0.38 + pulse * 0.22) * (0.55 + haloOpen * 0.45);
-      const rot = Math.floor(aura.age * spec.speed) + i * 2;
-      back.fillStyle(VALOR_PALETTE[4 - (i % 2)], alpha * 0.68);
-      pxArc(back, x, ringY, rx, spec.ry, {
-        from: Math.PI, to: Math.PI * 2, dash: 6 - i, gap: 2, rot,
+      const ringY = snap(y - h * spec.y + (1 - open) * 24);
+      const r = spec.r * (0.55 + open * 0.45) * (0.96 + pulse * 0.06);
+      const alpha = (0.62 + pulse * 0.22) * (0.55 + open * 0.45);
+      const sq = 0.22 + i * 0.03;
+      const off = aura.age * spec.speed * 0.14;
+      solidArcBand(back, x, ringY, {
+        palette: pal, tone: 4, from: Math.PI + off, to: Math.PI * 2 + off,
+        r, thickness: P * 2, alpha: alpha * 0.66, squash: sq,
+        taperEnds: 0.4, glint: false, seed: i * 4 + 2,
       });
-      air.fillStyle(VALOR_PALETTE[1 + (i % 3)], alpha);
-      pxArc(air, x, ringY, rx, spec.ry, {
-        from: 0, to: Math.PI, dash: 6 - i, gap: 2, rot,
+      solidArcBand(air, x, ringY, {
+        palette: pal, tone: 2 + (i % 2), from: off, to: Math.PI + off,
+        r, thickness: P * (3 - (i % 2)), alpha, squash: sq,
+        taperEnds: 0.4, seed: i * 4 + 5,
       });
-      // White leading glints make each rotating band feel energized.
-      const ga = aura.age * (spec.speed > 0 ? 1.7 : -1.5) + i * 2.1;
-      air.fillStyle(VALOR_PALETTE[0], 0.46 + pulse * 0.32);
-      pxStar(air, x + Math.cos(ga) * rx, ringY + Math.sin(ga) * spec.ry, P * (i === 1 ? 2 : 1));
     }
 
-    // A restrained glow follows the body after the invocation; the sprite tint
-    // supplies the golden silhouette while these scanlines create its aura.
-    air.fillStyle(VALOR_PALETTE[2], 0.06 + pulse * 0.045);
+    // A held glow on the body so the tinted silhouette has something to sit in.
+    air.fillStyle(shade(pal, 2), 0.06 + pulse * 0.045);
     pxDisc(air, x, chestY, 22 + pulse * 3, h * 0.48, { every: 4 });
-    air.fillStyle(VALOR_PALETTE[0], 0.28 + introPower * 0.52);
-    pxStar(air, x, chestY, P * (2 + Math.round(introPower * 4)));
 
-    // Dense upward particles form the opening light column, then settle into a
-    // constant shower that communicates the permanent heal/attack buff.
-    const moteCount = introPower > 0 ? 34 : 20;
-    for (let i = 0; i < moteCount; i++) {
+    // ── embers, with weight ──────────────────────────────────────────────
+    const emberCount = introPower > 0 ? 20 : 12;
+    for (let i = 0; i < emberCount; i++) {
       const seed = ((i * 29) % 71) / 70;
-      const ph = (aura.age * (0.42 + (i % 4) * 0.05) + seed) % 1;
-      const spread = 11 + (i % 6) * 5 + introPower * 12;
+      const ph = (aura.age * (0.4 + (i % 4) * 0.05) + seed) % 1;
+      const spread = 12 + (i % 5) * 6 + introPower * 14;
       const drift = Math.sin(aura.age * (1.1 + (i % 3) * 0.25) + i * 2.17);
-      const mx = snap(x + drift * spread);
-      const my = snap(y - 3 - ph * (h + 34));
-      const tone = 1 + ((i + Math.floor(ph * 4)) % (VALOR_PALETTE.length - 1));
-      const alpha = (1 - ph * 0.72) * (0.36 + (i % 4) * 0.13);
-      air.fillStyle(VALOR_PALETTE[tone], alpha);
-      const size = i % 9 === 0 ? P * 2 : P;
-      air.fillRect(mx, my, size, i % 5 === 0 ? P * 2 : P);
-      if (i % 11 === 0) {
-        air.fillStyle(VALOR_PALETTE[0], alpha * 0.9);
-        pxStar(air, mx, my, P);
-      }
+      debrisChunk(air,
+        snap(x + drift * spread),
+        snap(y - 3 - ph * (h + 34)), {
+          palette: pal, tone: 1 + (i % 4),
+          size: P * (1 + (i % 3)) * (1 - ph * 0.4),
+          alpha: (1 - ph * 0.78) * (0.55 + (i % 4) * 0.11),
+          seed: i * 3, squash: 0.9, spin: Math.floor(aura.age * 10 + i),
+        });
     }
   }
 
-  // ── Shield Bash: a travelling shield crest with stepped afterimages ──────
+  // ── Shield Bash: a forged shield wall ploughing down the cone ─────────────
   #startShieldBash(hero, facing, eff) {
     const y = hero.y - hero.spriteHeight * 0.45;
     this.shieldBashes.push({
       x: hero.x,
       y,
+      groundY: hero.y + 2,
       dir: facing,
       radius: eff.radius,
+      // The floor wake is drawn inside the warned cone, so it needs its width.
+      half: Phaser.Math.DegToRad(eff.arc ?? 75) / 2,
       travel: eff.waveTravel ?? 0.34,
       life: eff.waveLife ?? 0.68,
       crestScale: eff.crestScale ?? 1,
       age: 0,
       phase: Phaser.Math.FloatBetween(0, Math.PI * 2),
-      gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
+      // Two layers: the stone the wall has already ploughed through, and the
+      // wall itself passing in front of everything it is about to hit.
+      gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphGround),
+      gfxAir: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
     });
 
     // Compact release flash: the shield wave should visibly leave the Knight
@@ -1488,96 +1865,179 @@ export default class SkillSystem {
       const lifeP = Phaser.Math.Clamp(bash.age / bash.life, 0, 1);
       const fade = lifeP < 0.68 ? 1 : Math.max(0, 1 - (lifeP - 0.68) / 0.32);
       const g = bash.gfx;
+      const air = bash.gfxAir;
+      const pal = SHIELD_BASH_PALETTE;
       g.clear();
+      air.clear();
 
-      // Oldest echo first, bright head last. Each echo occupies an earlier
-      // point on the same path instead of scaling a single translucent sprite.
+      const headX = bash.x + bash.dir * (16 + bash.radius * travelP);
+      const rootX = bash.x + bash.dir * 14;
+
+      // ── the floor the wall has already been driven through ────────────────
+      // Ridges of displaced stone left inside the warned cone, then real
+      // fractures opening from the Knight's feet as the crest passes over them.
+      const wake = Math.max(P, bash.radius * travelP);
+      const arcMid = bash.dir > 0 ? 0 : Math.PI;
+      for (let i = 0; i < 4; i++) {
+        const q = (i + 1) / 4;
+        groundBand(g, rootX, bash.groundY, wake * q, {
+          palette: pal, tone: 3 + (i % 2),
+          thickness: P * (3 - (i % 2)),
+          alpha: (0.16 + q * 0.3) * fade,
+          bite: 1.5, seed: i * 7 + 1,
+          arcFrom: arcMid - bash.half * (0.55 + q * 0.45),
+          arcTo: arcMid + bash.half * (0.55 + q * 0.45),
+        });
+      }
+
+      for (let i = 0; i < 7; i++) {
+        const q = (i + 0.5) / 7;
+        const a = (q - 0.5) * bash.half * 1.85;
+        groundCrack(g, rootX, bash.groundY, {
+          palette: pal,
+          tone: 3,
+          angle: bash.dir > 0 ? a : Math.PI - a,
+          length: bash.radius * (0.6 + (i % 3) * 0.17),
+          alpha: 0.55 * fade,
+          reveal: Phaser.Math.Clamp(travelP * 1.3 - q * 0.12, 0, 1),
+          seed: i * 5 + 1,
+          branches: 1,
+          width: P * 2,
+        });
+      }
+
+      // Dust rolls off the trailing edge and settles; chips are thrown ahead of
+      // the rim, so the wall visibly displaces the room rather than passing it.
+      for (let i = 0; i < 6; i++) {
+        const back = travelP - (i + 1) * 0.055;
+        if (back <= 0) continue;
+        const bx = bash.x + bash.dir * (16 + bash.radius * back);
+        const side = (i % 2 ? 1 : -1) * (9 + i * 5);
+        dustPuff(g, bx - bash.dir * 4, bash.groundY + 2 + side * 0.32, {
+          palette: pal, tone: 4, size: 13 + i * 3,
+          alpha: 0.34 * fade * (1 - i / 7), lumps: 3, seed: i * 3 + 2, squash: 0.6,
+        });
+      }
+      for (let i = 0; i < 8; i++) {
+        const a = (((i + 0.5) / 8) - 0.5) * bash.half * 1.6;
+        const fly = 12 + ((i * 37) % 30) + travelP * 26;
+        debrisChunk(g,
+          headX + bash.dir * Math.cos(a) * fly,
+          bash.groundY + Math.sin(a) * fly * GROUND_SQUASH - travelP * (6 + (i % 4) * 4), {
+            palette: pal, tone: 3 + (i % 2), size: P * (2 + (i % 3)),
+            alpha: (0.5 + (i % 3) * 0.15) * fade, seed: i * 7, spin: Math.floor(bash.age * 30),
+          });
+      }
+
+      // ── the wall itself: oldest echo first, live crest last ──────────────
       for (let echo = 3; echo >= 0; echo--) {
         const ep = Math.max(0, travelP - echo * 0.135);
         if (echo > 0 && ep <= 0) continue;
         const x = snap(bash.x + bash.dir * (16 + bash.radius * ep));
         const y = snap(bash.y + Math.sin(bash.phase + ep * 7) * P);
-        const alpha = fade * (echo === 0 ? 0.95 : 0.1 + (3 - echo) * 0.1);
-        // The leading crest is deliberately almost as tall as the cone's
-        // mouth: it now reads as a shield wall sweeping left-to-right (or
-        // right-to-left) instead of a small projectile inside its warning.
+        const alpha = fade * (echo === 0 ? 1 : 0.12 + (3 - echo) * 0.1);
         const width = (34 + ep * 15 - echo * 2) * bash.crestScale;
-        const height = (42 + ep * 13 - echo * 3) * bash.crestScale;
-        this.#drawShieldCrest(g, x, y, bash.dir, width, height, alpha, echo === 0, bash.age);
+        const height = (44 + ep * 13 - echo * 3) * bash.crestScale;
+        this.#drawShieldCrest(air, x, y, bash.dir, width, height, alpha, echo === 0, bash.age);
       }
 
-      // Pixel sparks stream backward from the live crest, mirroring the small
-      // energy fragments between frames in the reference sheet.
-      const headX = snap(bash.x + bash.dir * (16 + bash.radius * travelP));
-      for (let i = 0; i < 15; i++) {
-        const trail = 8 + (i % 6) * 8 + travelP * 10;
-        const sy = snap(bash.y + Math.sin(bash.phase + i * 1.73 + bash.age * 8) * (8 + (i % 4) * 4));
-        const sx = snap(headX - bash.dir * trail);
-        g.fillStyle(SHIELD_BASH_PALETTE[2 + (i % 4)], (0.22 + (i % 3) * 0.12) * fade);
-        g.fillRect(sx, sy, i % 5 === 0 ? P * 2 : P, P);
-      }
+      // A thin compression front runs a few pixels ahead of the live rim.
+      solidArcBand(air, headX - bash.dir * 6, bash.y, {
+        palette: pal, tone: 0,
+        from: bash.dir > 0 ? -1.15 : Math.PI - 1.15,
+        to: bash.dir > 0 ? 1.15 : Math.PI + 1.15,
+        r: 34 * bash.crestScale, thickness: P * 2,
+        alpha: 0.7 * fade * (1 - travelP * 0.4), squash: 0.86,
+        taperEnds: 0.45, seed: 9,
+      });
 
       if (bash.age < bash.life) continue;
       g.destroy();
+      air.destroy();
       this.shieldBashes = this.shieldBashes.filter((b) => b !== bash);
     }
   }
 
-  /** Pixel-rasterised arrowhead shield with a bright rim and inner sigil. */
+  /**
+   * A shield with body: a heater-shield plate — flat across the top, bowed on
+   * the leading edge, tapering to a point at the bottom — with a bright leading
+   * rim of studs, a domed boss and a forward spike, struck runes, and swept fins
+   * at the rear. Solid enough to read as forged metal at 1x.
+   */
   #drawShieldCrest(g, cx, cy, dir, width, height, alpha, bright, age) {
-    const halfRows = Math.max(2, Math.round(height / (P * 2)));
+    const pal = SHIELD_BASH_PALETTE;
+    const rows = Math.max(3, Math.round(height / (P * 2)));
+    const base = bright ? 2 : 4;
+    const edges = [];
 
-    // Scanline-filled convex shield: pointed at the impact side, not a flat
-    // rectangle. Alternating tones preserve detail in the translucent echoes.
-    for (let row = -halfRows; row <= halfRows; row++) {
-      const v = Math.abs(row) / halfRows;
-      if (v >= 1) continue;
-      const front = cx + dir * width * (0.58 - v * 0.34);
-      const back = cx - dir * width * (0.3 - v * 0.16);
+    for (let row = -rows; row <= rows; row++) {
+      const t = (row + rows) / (rows * 2); // 0 = top of the plate
+      // flat top with a rounded corner, straight sides, point at the bottom
+      const cap = t < 0.1 ? Math.sqrt(Math.max(0, 1 - ((0.1 - t) / 0.1) ** 2)) : 1;
+      const tip = t > 0.58 ? Math.max(0, 1 - ((t - 0.58) / 0.42) ** 1.5) : 1;
+      const prof = cap * tip;
+      if (prof <= 0.02) continue;
+      const front = cx + dir * width * (0.1 + prof * 0.5);
+      const back = cx - dir * width * 0.26 * Math.max(0.25, prof);
       const left = snap(Math.min(front, back));
       const right = snap(Math.max(front, back));
-      const tone = bright
-        ? 2 + (Math.abs(row) % 3)
-        : 4 + (Math.abs(row) % 2);
-      g.fillStyle(SHIELD_BASH_PALETTE[tone], alpha * (0.5 + (1 - v) * 0.28));
-      g.fillRect(left, snap(cy + row * P), Math.max(P, right - left), P);
+      const y = snap(cy + row * P);
+      const lead = dir > 0 ? right - P : left;
+      const trail = dir > 0 ? left : right - P;
+
+      // body, shaded top-lit: the upper half of the plate catches the torch
+      g.fillStyle(shade(pal, base + (t > 0.5 ? 1 : 0)), alpha * (0.62 + prof * 0.3));
+      g.fillRect(left, y, Math.max(P, right - left), P);
+      // two-block leading rim so the bow reads as a raised edge
+      g.fillStyle(shade(pal, base - 2), alpha);
+      g.fillRect(lead, y, P, P);
+      g.fillStyle(shade(pal, base - 1), alpha * 0.9);
+      g.fillRect(lead - dir * P, y, P, P);
+      g.fillStyle(shade(pal, base + 2), alpha * 0.9);
+      g.fillRect(trail, y, P, P);
+      edges.push([lead, y]);
     }
 
-    const tipX = snap(cx + dir * width * 0.62);
-    const backX = snap(cx - dir * width * 0.34);
-    const topY = snap(cy - height * 0.46);
-    const bottomY = snap(cy + height * 0.46);
+    // studs riveted along the leading rim
+    g.fillStyle(shade(pal, bright ? 0 : 2), alpha);
+    for (let i = 1; i < edges.length; i += 3) {
+      g.fillRect(edges[i][0] + dir * P, edges[i][1], P, P);
+    }
 
-    // Double gold outline and jagged rear fins make the leading frame readable
-    // as a magical shield bash instead of a generic projectile.
-    g.fillStyle(bright ? SHIELD_BASH_PALETTE[1] : SHIELD_BASH_PALETTE[4], alpha);
-    pxLine(g, tipX, cy, snap(cx + dir * width * 0.22), topY);
-    pxLine(g, snap(cx + dir * width * 0.22), topY, backX, snap(cy - height * 0.25));
-    pxLine(g, backX, snap(cy - height * 0.25), snap(cx - dir * width * 0.22), cy);
-    pxLine(g, snap(cx - dir * width * 0.22), cy, backX, snap(cy + height * 0.25));
-    pxLine(g, backX, snap(cy + height * 0.25), snap(cx + dir * width * 0.22), bottomY);
-    pxLine(g, snap(cx + dir * width * 0.22), bottomY, tipX, cy);
+    // domed boss: lit crown, thin shadow crescent, forward spike
+    const bx = snap(cx + dir * width * 0.08);
+    const bossR = Math.max(P * 2, width * 0.2);
+    g.fillStyle(shade(pal, base + 2), alpha);
+    pxDisc(g, snap(bx + P), snap(cy + P), bossR, bossR * 0.92);
+    g.fillStyle(shade(pal, base - 1), alpha);
+    pxDisc(g, bx, snap(cy), bossR * 0.86, bossR * 0.78);
+    g.fillStyle(shade(pal, base - 3), alpha);
+    pxDisc(g, snap(bx - P), snap(cy - P * 2), bossR * 0.4, bossR * 0.3);
+    solidWedge(g, bx, cy, {
+      palette: pal, tone: base - 2, angle: dir > 0 ? 0 : Math.PI,
+      r0: bossR * 0.5, r1: bossR * 0.5 + width * 0.3,
+      w0: P * 5, w1: P, alpha, taper: 1.5, notch: false, seed: 6,
+    });
 
-    g.fillStyle(bright ? SHIELD_BASH_PALETTE[0] : SHIELD_BASH_PALETTE[3], alpha * 0.78);
-    pxLine(g, tipX - dir * P * 3, cy, snap(cx + dir * width * 0.15), snap(cy - height * 0.31));
-    pxLine(g, tipX - dir * P * 3, cy, snap(cx + dir * width * 0.15), snap(cy + height * 0.31));
+    // two struck runes, pulsing with the cast
+    const glow = alpha * (0.62 + 0.38 * Math.sin(age * 18));
+    for (const s of [-1, 1]) {
+      runeGlyph(g, bx, cy + s * height * 0.28, {
+        palette: pal, tone: bright ? 0 : 2, size: width * 0.16,
+        alpha: glow, variant: s < 0 ? 3 : 5,
+      });
+    }
 
+    // swept rear fins: the wall is being driven, and the drive shows
     for (let fin = -2; fin <= 2; fin++) {
-      const fy = snap(cy + fin * height * 0.16);
-      const extra = width * (0.16 + (Math.abs(fin) % 2) * 0.08);
-      g.fillStyle(SHIELD_BASH_PALETTE[bright ? 2 : 5], alpha * (0.58 - Math.abs(fin) * 0.07));
-      pxLine(g, backX, fy, backX - dir * extra, fy + fin * P * 2);
+      solidWedge(g, cx - dir * width * 0.24, cy + fin * height * 0.26, {
+        palette: pal, tone: base + 2,
+        angle: (dir > 0 ? Math.PI : 0) + fin * 0.26 * dir,
+        r0: 0, r1: width * (0.26 + (Math.abs(fin) % 2) * 0.14),
+        w0: P * 4, w1: P, alpha: alpha * (0.7 - Math.abs(fin) * 0.11),
+        taper: 1.4, glint: false, seed: fin + 4,
+      });
     }
-
-    // Rotating diamond-and-star sigil in the centre of the leading shield.
-    const pulse = 0.65 + 0.35 * Math.sin(age * 18);
-    const sigil = P * (bright ? 5 : 3);
-    g.fillStyle(SHIELD_BASH_PALETTE[bright ? 0 : 3], alpha * pulse);
-    pxLine(g, cx, cy - sigil, cx + sigil, cy);
-    pxLine(g, cx + sigil, cy, cx, cy + sigil);
-    pxLine(g, cx, cy + sigil, cx - sigil, cy);
-    pxLine(g, cx - sigil, cy, cx, cy - sigil);
-    pxStar(g, cx, cy, bright ? P * 2 : P);
   }
 
   // ── Ice Wall: a jagged ring whose cracks mirror the shield's state ───────
@@ -1776,118 +2236,137 @@ export default class SkillSystem {
       const fade = 1 - p;
       const x = snap(nova.x);
       const y = snap(nova.y);
-      const phaseTone = Math.min(
-        NOVA_ICE_PALETTE.length - 1,
-        Math.floor(p * (NOVA_ICE_PALETTE.length - 3)),
-      );
 
-      // Three counter-rotating ice seals give the wave a charged core before
-      // the outer wall of frost reaches the monsters.
-      g.fillStyle(NOVA_ICE_PALETTE[phaseTone], 0.25 + 0.5 * fade);
-      pxGroundRing(g, x, y, r, { dash: 5, gap: 3 });
-      g.fillStyle(NOVA_ICE_PALETTE[Math.min(phaseTone + 2, NOVA_ICE_PALETTE.length - 1)], 0.3 * fade);
-      pxGroundRing(g, x, y, r * 0.68, { dash: 3, gap: 4, rot: nova.phase + nova.age * 10 });
-      g.fillStyle(NOVA_ICE_PALETTE[Math.max(0, phaseTone - 2)], 0.32 * fade);
-      pxGroundRing(g, x, y, r * (0.35 + p * 0.18), { dash: 2, gap: 5, rot: -nova.phase - nova.age * 15 });
-      g.fillStyle(NOVA_ICE_PALETTE[Math.min(phaseTone + 1, NOVA_ICE_PALETTE.length - 1)], 0.14 * fade);
-      pxDisc(g, x, y, r * 0.9, r * 0.9 * GROUND_SQUASH, { every: 3 });
+      const pal = NOVA_ICE_PALETTE;
+      const punch = Math.max(0, 1 - nova.age / 0.16);
 
-      // A delayed, broken wake keeps the shockwave moving after its bright
-      // leading rim has passed. It gives the burst a readable beginning,
-      // middle, and release instead of a single expanding hoop.
-      const wakeR = r * (0.38 + 0.38 * Math.min(1, p * 1.45));
-      g.fillStyle(0x5caecd, 0.42 * fade);
-      pxGroundRing(g, x, y, wakeR, { dash: 2, gap: 5, rot: -nova.phase + nova.age * 14 });
-      if (p < 0.42) {
-        const core = nova.r * (0.08 + p * 0.52);
-        g.fillStyle(0xffffff, 0.78 * (1 - p / 0.42));
-        for (let i = 0; i < 8; i++) {
-          const a = nova.phase + (i / 8) * Math.PI * 2;
-          pxLine(g, x, y,
-            x + Math.cos(a) * core,
-            y + Math.sin(a) * core * GROUND_SQUASH);
+      // ── the floor freezes over, then splits ──────────────────────────────
+      // A sheet of rime is laid down inside the wave, dithered so the edge
+      // dissolves into bare stone instead of ending on a hard circle.
+      g.fillStyle(shade(pal, 7), (0.16 + travel * 0.14) * fade);
+      pxDisc(g, x, y, r * 0.97, r * 0.97 * GROUND_SQUASH, { every: 3 });
+      g.fillStyle(shade(pal, 5), (0.12 + punch * 0.2) * fade);
+      pxDisc(g, x, y, r * 0.6, r * 0.6 * GROUND_SQUASH, { every: 4 });
+      g.fillStyle(shade(pal, 1), (0.34 + punch * 0.5) * fade);
+      pxDisc(g, x, y, r * (0.1 + punch * 0.16), r * (0.1 + punch * 0.16) * GROUND_SQUASH);
+
+      // The advancing wall of frost, and the settled ridge left behind it. A
+      // deep rim on the outside keeps the wall from bleeding into bare stone.
+      groundBand(g, x, y, r + P * 2, {
+        palette: pal, tone: 8, thickness: P * 2,
+        alpha: 0.5 * fade, bite: 1.4, seed: 15, glint: false,
+      });
+      groundBand(g, x, y, r, {
+        palette: pal, tone: 1, thickness: P * (2 + Math.round(fade * 3)),
+        alpha: (0.7 + punch * 0.3) * fade, bite: 1.2, seed: 3,
+      });
+      groundBand(g, x, y, r * 0.66, {
+        palette: pal, tone: 5, thickness: P * 2,
+        alpha: 0.5 * fade, bite: 1.7, seed: 9,
+      });
+
+      // Fractures spread with the wave and stay open in the ice behind it.
+      for (let i = 0; i < 16; i++) {
+        const a = nova.phase * 0.18 + (i / 16) * Math.PI * 2;
+        groundCrack(g, x + Math.cos(a) * r * 0.12, y + Math.sin(a) * r * 0.12 * GROUND_SQUASH, {
+          palette: pal, tone: 6, angle: a,
+          length: nova.r * (0.6 + (i % 5) * 0.09),
+          alpha: 0.62 * fade, reveal: Math.min(1, travel * 1.15),
+          seed: i * 4 + 1, branches: 2, width: P * 2,
+        });
+      }
+
+      // Ground fog clinging to the rime just inside the rim.
+      for (let i = 0; i < 8; i++) {
+        const a = nova.phase + (i / 8) * Math.PI * 2 + nova.age * 0.6;
+        dustPuff(g, x + Math.cos(a) * r * 0.8, y + Math.sin(a) * r * 0.8 * GROUND_SQUASH, {
+          palette: pal, tone: 3, size: 15 + travel * 12,
+          alpha: 0.24 * fade, lumps: 3, seed: i * 5 + 2, squash: 0.55,
+        });
+      }
+
+      // ── the eruption ─────────────────────────────────────────────────────
+      // A cluster bursts out of the caster's feet on frame one, then a ring of
+      // real crystals tears up out of the floor as the wave reaches each radius.
+      for (let i = 0; i < 6; i++) {
+        const a = nova.phase + (i / 6) * Math.PI * 2;
+        const core = Math.min(1, nova.age / 0.1);
+        // Spread far enough apart that six spikes read as six spikes; the dark
+        // block at each foot keeps them off the bright rime behind them.
+        const cd = 15 + (i % 3) * 5;
+        air.fillStyle(shade(pal, 8), fade * 0.6);
+        air.fillRect(snap(x + Math.cos(a) * cd - P * 2), snap(y + Math.sin(a) * cd * 0.6 + 2), P * 4, P * 2);
+        this.#drawLanceCrystal(air,
+          snap(x + Math.cos(a) * cd), snap(y + Math.sin(a) * cd * 0.6 + 2), {
+            height: 34 + (i % 3) * 16, width: 12 + (i % 2) * 6,
+            grow: core * (0.6 + fade * 0.4), alpha: fade * 0.95,
+            tone: 2 + (i % 4), lean: Math.cos(a) * 12,
+          });
+      }
+      const rimCount = 22;
+      for (let i = 0; i < rimCount; i++) {
+        const a = (i / rimCount) * Math.PI * 2 + nova.phase * 0.1;
+        const q = ((i * 9) % rimCount) / (rimCount - 1);
+        // Weighted outward: crystals belong at the wave front, where they
+        // silhouette against bare stone instead of against their own rime.
+        const at = 0.46 + q * 0.56;
+        const grow = Phaser.Math.Clamp((travel - at * 0.82) * 5, 0, 1);
+        if (grow <= 0) continue;
+        const rr = nova.r * at;
+        const bx = snap(x + Math.cos(a) * rr);
+        const by = snap(y + Math.sin(a) * rr * GROUND_SQUASH + 2);
+        air.fillStyle(shade(pal, 8), fade * grow * 0.55);
+        air.fillRect(bx - P * 2, by, P * 4, P * 2);
+        this.#drawLanceCrystal(air, bx, by, {
+          height: 26 + (i % 4) * 11 + (1 - at) * 14, width: 10 + (i % 3) * 4,
+          grow: grow * (0.55 + fade * 0.45), alpha: fade * (0.7 + grow * 0.3),
+          tone: 2 + (i % 4), lean: Math.cos(a) * 7,
+        });
+      }
+
+      // The cold front standing over the rim: bright on the near face, dim
+      // where it wraps behind, so the wave has a front and a back.
+      solidArcBand(air, x, y - 6, {
+        palette: pal, tone: 1, from: 0, to: Math.PI,
+        r, thickness: P * (2 + Math.round(fade * 2)),
+        alpha: 0.72 * fade, squash: GROUND_SQUASH * 1.1, taperEnds: 0, seed: 5,
+      });
+      solidArcBand(g, x, y - 6, {
+        palette: pal, tone: 4, from: Math.PI, to: Math.PI * 2,
+        r, thickness: P * 2, alpha: 0.4 * fade,
+        squash: GROUND_SQUASH * 1.1, taperEnds: 0, glint: false, seed: 6,
+      });
+
+      // Shrapnel thrown outward on the break, then rime drifting up off the ice.
+      if (punch > 0.02) {
+        for (let i = 0; i < 12; i++) {
+          const a = nova.phase * 0.5 + (i / 12) * Math.PI * 2;
+          shardFan(air, x + Math.cos(a) * r * 0.9, y + Math.sin(a) * r * 0.9 * GROUND_SQUASH, {
+            palette: pal, tone: 1 + (i % 3), angle: a, spread: 0.5, count: 3,
+            r0: 0, r1: 12 + punch * 26, alpha: punch * 0.9,
+            squash: GROUND_SQUASH, seed: i * 3, width: P * 3,
+          });
         }
       }
-
-      // Persistent ground fractures: the wave opens each crack quickly, then
-      // the broken ice remains readable until the very end of the effect.
-      // Every ray has deterministic bends and a short branch, so the pattern
-      // looks fractured rather than like another perfect radial burst.
-      const crackCount = 18;
-      const crackGrow = Math.min(1, nova.age / 0.24);
-      const crackFade = p < 0.76 ? 0.72 : 0.72 * (1 - (p - 0.76) / 0.24);
-      for (let i = 0; i < crackCount; i++) {
-        const a = nova.phase * 0.18 + (i / crackCount) * Math.PI * 2;
-        const bend = (i % 2 ? 1 : -1) * (0.07 + (i % 4) * 0.025);
-        const total = nova.r * (0.52 + (i % 5) * 0.075) * crackGrow;
-        const r1 = total * (0.34 + (i % 3) * 0.04);
-        const r2 = total * (0.68 + (i % 2) * 0.05);
-        const x1 = x + Math.cos(a) * r1;
-        const y1 = y + Math.sin(a) * r1 * GROUND_SQUASH;
-        const x2 = x + Math.cos(a + bend) * r2;
-        const y2 = y + Math.sin(a + bend) * r2 * GROUND_SQUASH;
-        const x3 = x + Math.cos(a - bend * 0.45) * total;
-        const y3 = y + Math.sin(a - bend * 0.45) * total * GROUND_SQUASH;
-        const crackTone = Math.min(
-          NOVA_ICE_PALETTE.length - 1,
-          phaseTone + 1 + (i % 3),
-        );
-        g.fillStyle(NOVA_ICE_PALETTE[crackTone], crackFade);
-        pxLine(g, x, y, x1, y1);
-        pxLine(g, x1, y1, x2, y2);
-        pxLine(g, x2, y2, x3, y3);
-
-        const branchA = a + bend + (i % 2 ? 0.34 : -0.34);
-        const branch = total * (0.16 + (i % 3) * 0.035);
-        pxLine(g, x2, y2,
-          x2 + Math.cos(branchA) * branch,
-          y2 + Math.sin(branchA) * branch * GROUND_SQUASH);
+      for (let i = 0; i < 18; i++) {
+        const a = nova.phase + i * 2.4 + nova.age * (2.5 + (i % 3) * 0.7);
+        const q = (i % 6) / 5;
+        const orbit = r * (0.24 + q * 0.7);
+        debrisChunk(air,
+          snap(x + Math.cos(a) * orbit),
+          snap(y + Math.sin(a) * orbit * GROUND_SQUASH - 6 - q * 34 - travel * 12), {
+            palette: pal, tone: 1 + (i % 4), size: P * (1 + (i % 3)),
+            alpha: (0.4 + q * 0.4) * fade, seed: i * 7, squash: 0.9,
+            spin: Math.floor(nova.age * 12 + i),
+          });
       }
-
-      // spikes crystallise on the rim and shrink as the wave passes
-      const spikeCount = 26;
-      for (let i = 0; i < spikeCount; i++) {
-        const a = (i / spikeCount) * Math.PI * 2;
-        const sx = snap(x + Math.cos(a) * r);
-        const sy = snap(y + Math.sin(a) * r * GROUND_SQUASH);
-        const arm = P * (1 + Math.round(fade * 2));
-        const spikeTone = Math.min(
-          NOVA_ICE_PALETTE.length - 1,
-          phaseTone + (i % 5),
-        );
-        g.fillStyle(NOVA_ICE_PALETTE[spikeTone], 0.85 * fade + 0.1);
-        pxStar(g, sx, sy, arm);
-        g.fillRect(sx - P, sy - arm * 3, P * 2, arm * 3);
-        const spike = arm * (2 + Math.round(fade * 2));
-        pxLine(g, sx, sy,
-          sx + Math.cos(a) * spike,
-          sy + Math.sin(a) * spike * GROUND_SQUASH);
+      for (let i = 0; i < 5; i++) {
+        const a = nova.phase * 1.3 + (i / 5) * Math.PI * 2;
+        dustPuff(air, x + Math.cos(a) * r * 0.45, y + Math.sin(a) * r * 0.3 - 18 - i * 5, {
+          palette: pal, tone: 2, size: 12 + i * 3 + travel * 10,
+          alpha: 0.2 * fade, lumps: 3, seed: i * 9 + 4, squash: 0.8,
+        });
       }
-
-      // Suspended shards rise in a spiral above the ground ring.  This second
-      // layer keeps Nova from reading as a flat UI circle.
-      const shardCount = 38;
-      for (let i = 0; i < shardCount; i++) {
-        const a = nova.phase + i * 2.4 + nova.age * (7 + (i % 3));
-        const q = (i % 8) / 7;
-        const orbit = r * (0.2 + q * 0.68) * (0.65 + p * 0.35);
-        const sx = snap(x + Math.cos(a) * orbit);
-        const sy = snap(y + Math.sin(a) * orbit * GROUND_SQUASH - 8 - q * 38 * (1 - p * 0.45));
-        const size = i % 4 === 0 ? P * 3 : P * 2;
-        const shardTone = Math.min(
-          NOVA_ICE_PALETTE.length - 1,
-          phaseTone + Math.floor(q * 3) + (i % 3),
-        );
-        air.fillStyle(NOVA_ICE_PALETTE[shardTone], (0.3 + q * 0.55) * fade);
-        air.fillRect(sx, sy, size, size + P * (i % 2));
-        if (i % 3 === 0) {
-          pxLine(air, sx, sy,
-            sx + Math.cos(a + Math.PI * 0.5) * P * 3,
-            sy + Math.sin(a + Math.PI * 0.5) * P * 3);
-        }
-      }
-      air.fillStyle(NOVA_ICE_PALETTE[Math.max(0, phaseTone - 1)], 0.7 * fade);
-      pxStar(air, x, snap(y - 24 - (1 - p) * 16), P * (2 + Math.round(fade * 2)));
 
       if (nova.age < nova.life) continue;
       g.destroy();
@@ -2068,6 +2547,9 @@ export default class SkillSystem {
       duration: eff.duration ?? 0.3, age: 0,
       phase: Phaser.Math.FloatBetween(0, Math.PI * 2),
       gfx: this.scene.add.graphics().setDepth(DEPTH.unitFx),
+      // The torn veil and the hooded echoes belong behind the fighters; only
+      // the shards thrown off the tear sit in front of them.
+      gfxBack: this.scene.add.graphics().setDepth(DEPTH.ghost),
     });
     this.scene.fx.skillBurst(startX, startY - hero.spriteHeight * 0.46,
       NIGHTVEIL_PALETTE[3], 'arcane');
@@ -2087,39 +2569,91 @@ export default class SkillSystem {
       }
 
       const g = dash.gfx;
+      const back = dash.gfxBack;
       g.clear();
+      back.clear();
+      const pal = NIGHTVEIL_PALETTE;
       const fade = 1 - p * 0.48;
-      // Layered ribbons mark the full travel path; alternating violet values
-      // keep the trail textured instead of becoming one translucent line.
-      for (let ribbon = -3; ribbon <= 3; ribbon++) {
-        const nx = -Math.sin(dash.angle) * ribbon * P * 2;
-        const ny = Math.cos(dash.angle) * ribbon * P * 2;
-        g.fillStyle(NIGHTVEIL_PALETTE[2 + (Math.abs(ribbon) % 4)],
-          (0.13 + (3 - Math.abs(ribbon)) * 0.045) * fade);
-        pxLine(g, dash.startX + nx, dash.startY - 40 + ny,
-          hero.x - Math.cos(dash.angle) * 14 + nx,
-          hero.y - 40 - Math.sin(dash.angle) * 14 + ny);
+      const chest = hero.spriteHeight * 0.5;
+      const facing = Math.cos(dash.angle) >= 0 ? 1 : -1;
+      const nx = -Math.sin(dash.angle);
+      const ny = Math.cos(dash.angle);
+      const sx = snap(dash.startX);
+      const sy = snap(dash.startY - chest);
+      const hx = snap(hero.x - Math.cos(dash.angle) * 12);
+      const hy = snap(hero.y - chest - Math.sin(dash.angle) * 12);
+
+      // ── the torn veil: a ribbon of shadow dragged along the path ─────────
+      // Widest at the departure point, where the archer's outline is still
+      // unravelling, narrowing to a point at their heels.
+      const segs = 6;
+      for (let i = 0; i < segs; i++) {
+        const q0 = i / segs;
+        const q1 = (i + 1) / segs;
+        const ax = sx + (hx - sx) * q0;
+        const ay = sy + (hy - sy) * q0;
+        const bx = sx + (hx - sx) * q1;
+        const by = sy + (hy - sy) * q1;
+        const a = Math.atan2(by - ay, bx - ax);
+        const seglen = Math.hypot(bx - ax, by - ay) + P;
+        solidWedge(back, ax, ay, {
+          palette: pal, tone: 5, angle: a, r0: 0, r1: seglen,
+          w0: P * (13 - q0 * 8), w1: P * (13 - q1 * 8),
+          alpha: fade * (0.7 - q1 * 0.26), taper: 1, notch: true, seed: i * 3,
+        });
+        for (const s of [-1, 1]) {
+          const off = P * (6 - q1 * 3.5) * s;
+          solidWedge(back, ax + nx * off, ay + ny * off, {
+            palette: pal, tone: 1 + (i % 2), angle: a, r0: 0, r1: seglen,
+            w0: P, w1: P * 2, alpha: fade * (0.72 - q1 * 0.34),
+            taper: 1, notch: false, seed: i + (s > 0 ? 13 : 19),
+          });
+        }
       }
-      // Hooded afterimages are deliberately incomplete silhouettes: head,
-      // shoulders and ragged cloak dissolve at different rates.
-      for (let echo = 1; echo <= 5; echo++) {
-        const q = Math.max(0, eased - echo * 0.105);
-        const ex = snap(Phaser.Math.Linear(dash.startX, dash.endX, q));
-        const ey = snap(Phaser.Math.Linear(dash.startY, dash.endY, q));
-        const alpha = (0.2 - echo * 0.025) * fade;
-        g.fillStyle(NIGHTVEIL_PALETTE[5 + (echo % 2)], alpha);
-        pxDisc(g, ex, ey - 65, 10, 12, { every: 2 });
-        pxLine(g, ex - 14, ey - 53, ex, ey - 17);
-        pxLine(g, ex + 14, ey - 53, ex + (echo % 2 ? 5 : -5), ey - 12);
+
+      // ── four hooded echoes strung along it, each further gone ────────────
+      for (let echo = 1; echo <= 4; echo++) {
+        const q = Math.max(0, eased - echo * 0.13);
+        if (q <= 0.001) continue;
+        figureForm(back, snap(Phaser.Math.Linear(dash.startX, dash.endX, q)),
+          snap(Phaser.Math.Linear(dash.startY, dash.endY, q)), {
+            palette: pal, tone: 3 + (echo % 2), height: hero.spriteHeight * 0.96,
+            alpha: fade * (0.68 - echo * 0.12), facing, lean: -facing * 5,
+            cloak: 1, rimTone: 1,
+          });
       }
-      for (let mote = 0; mote < 18; mote++) {
-        const q = (mote + 1) / 19;
-        const mx = snap(Phaser.Math.Linear(dash.startX, hero.x, q)
-          + Math.sin(dash.phase + mote * 2.17) * 13);
-        const my = snap(Phaser.Math.Linear(dash.startY, hero.y, q) - 18
-          - (mote % 6) * P * 3);
-        g.fillStyle(NIGHTVEIL_PALETTE[2 + (mote % 5)], (0.46 - q * 0.28) * fade);
-        g.fillRect(mx, my, mote % 5 === 0 ? P * 2 : P, P);
+
+      // ── the tear left behind at the departure point ──────────────────────
+      const tear = Math.max(0, 1 - p / 0.7);
+      if (tear > 0.02) {
+        crescentForm(g, sx, sy, {
+          palette: pal, tone: 2, r: 20 + (1 - tear) * 24, bite: 0.5,
+          angle: dash.angle + Math.PI, alpha: tear * 0.8, squash: 0.9, rim: true,
+        });
+        shardFan(g, sx, sy, {
+          palette: pal, tone: 1, angle: dash.angle + Math.PI, spread: 2.3,
+          count: 7, r0: 8, r1: 24 + (1 - tear) * 30, alpha: tear * 0.85,
+          squash: 0.85, width: P * 2, seed: dash.phase,
+        });
+      }
+      // Shreds of the veil torn loose and left hanging over the path.
+      for (let i = 0; i < 9; i++) {
+        const q = (i + 1) / 10;
+        const drift = Math.sin(dash.phase + i * 2.17) * 15;
+        debrisChunk(g, snap(sx + (hx - sx) * q + nx * drift),
+          snap(sy + (hy - sy) * q + ny * drift - (i % 4) * P * 3), {
+            palette: pal, tone: 1 + (i % 4), size: 4 + (i % 3) * 2,
+            alpha: (0.7 - q * 0.35) * fade, seed: i * 4, spin: i,
+          });
+      }
+      // The arrival: shadow gathering back into a body, behind it so the
+      // archer's own silhouette stays clean.
+      if (p > 0.55) {
+        const land = (p - 0.55) / 0.45;
+        crescentForm(back, snap(hero.x), snap(hero.y - chest), {
+          palette: pal, tone: 1, r: 32 - land * 12, bite: 0.62,
+          angle: dash.angle, alpha: (1 - land) * 0.62, squash: 0.9, rim: true,
+        });
       }
 
       if (p < 1 && hero.alive) continue;
@@ -2149,6 +2683,7 @@ export default class SkillSystem {
         this.scene.fx.ring(hero.x, hero.y - 8, 42, NIGHTVEIL_PALETTE[3], 260, 2);
       }
       g.destroy();
+      back.destroy();
       this.shadowsteps = this.shadowsteps.filter((d) => d !== dash);
     }
   }
@@ -2171,6 +2706,8 @@ export default class SkillSystem {
       targets, hitSet: new Set(), arrows: [],
       age: 0, phase: Phaser.Math.FloatBetween(0, Math.PI * 2),
       gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
+      // Acid splats stay on the stone under the monsters they land around.
+      gfxBack: this.scene.add.graphics().setDepth(DEPTH.floorDecal),
     });
     this.scene.fx.skillBurst(hero.x + facing * 22, hero.y - hero.spriteHeight * 0.56,
       VENOM_PALETTE[1], 'arcane');
@@ -2225,32 +2762,69 @@ export default class SkillSystem {
       }
 
       const g = shot.gfx;
+      const back = shot.gfxBack;
       g.clear();
+      back.clear();
+      const pal = VENOM_PALETTE;
       shot.arrows = shot.arrows.filter((arrow) => shot.age - arrow.bornAt < shot.arrowLife);
       // Each fang falls toward its own random impact point inside the warning
-      // zone. The head always leads into that point, so arrows never render
-      // backwards when the Archer faces left.
+      // zone, then bursts: the shaft is a solid arrow with a curved fang for a
+      // head, and where it lands it leaves acid eating into the stone.
       for (const arrow of shot.arrows) {
         const p = Phaser.Math.Clamp((shot.age - arrow.bornAt) / shot.arrowLife, 0, 1);
         const fade = p < 0.72 ? 1 : Math.max(0, 1 - (p - 0.72) / 0.28);
-        // The fang raster's head is drawn along its local positive axis;
-        // reverse that local axis so its visible point faces the impact.
-        const dx = -Math.cos(arrow.angle);
-        const dy = -Math.sin(arrow.angle);
         const travel = 1 - (1 - p) ** 3;
         const cx = snap(Phaser.Math.Linear(arrow.startX, arrow.endX, travel));
         const cy = snap(Phaser.Math.Linear(arrow.startY, arrow.endY, travel));
-        g.fillStyle(VENOM_PALETTE[0], 0.94 * fade);
-        pxLine(g, cx - dx * 26, cy - dy * 26, cx + dx * 11, cy + dy * 11);
-        g.fillStyle(VENOM_PALETTE[1], 0.9 * fade);
-        pxLine(g, cx + dx * 10, cy + dy * 10, cx + dx * 23 - dy * 6, cy + dy * 23 + dx * 6);
-        pxLine(g, cx + dx * 10, cy + dy * 10, cx + dx * 23 + dy * 6, cy + dy * 23 - dx * 6);
-        for (let i = 0; i < 8; i++) {
-          const tail = 28 + i * 11;
-          const tx = snap(cx - dx * tail + Math.sin(arrow.angle + i * 2.1) * P * 2);
-          const ty = snap(cy - dy * tail + Math.cos(arrow.angle + i * 2.1) * P * 2);
-          g.fillStyle(i % 2 ? VENOM_PALETTE[2] : NIGHTVEIL_PALETTE[3], (0.62 - i * 0.06) * fade);
-          g.fillRect(tx, ty, i % 3 === 0 ? P * 2 : P, P);
+        const land = Phaser.Math.Clamp((p - 0.5) / 0.5, 0, 1);
+        const flight = 1 - land;
+
+        // ── the splat, growing under the impact point ──────────────────────
+        if (land > 0) {
+          const ex = snap(arrow.endX);
+          const ey = snap(arrow.endY + 2);
+          const rr = (13 + land * 17) * (1 - land * 0.12);
+          back.fillStyle(shade(pal, 3), fade * land * 0.5);
+          pxDisc(back, ex, ey, rr, rr * GROUND_SQUASH, { every: 2 });
+          back.fillStyle(shade(pal, 1), fade * land * 0.4);
+          pxDisc(back, ex, ey, rr * 0.44, rr * 0.44 * GROUND_SQUASH);
+          groundBand(back, ex, ey, rr, {
+            palette: pal, tone: 2, thickness: P * 2, alpha: fade * land * 0.75,
+            bite: 1.7, seed: Math.round(arrow.startX), glint: false,
+          });
+          // Droplets thrown back out of the puddle, and the vapour off it.
+          shardFan(g, ex, ey - 2, {
+            palette: pal, tone: 1, angle: -Math.PI / 2, spread: 2.7, count: 6,
+            r0: 4, r1: 8 + land * 20, alpha: fade * (1 - land) * 0.95,
+            squash: 0.75, width: P * 2, seed: arrow.startY,
+          });
+          dustPuff(g, ex, ey - 6 - land * 12, {
+            palette: pal, tone: 2, size: 12 + land * 16, alpha: fade * (0.5 - land * 0.34),
+            lumps: 3, seed: arrow.startX, squash: 0.8,
+          });
+        }
+
+        // ── the fang still in the air ──────────────────────────────────────
+        if (flight > 0.02) {
+          arrowForm(g, cx, cy, {
+            palette: pal, tone: 2, angle: arrow.angle, length: 24 + flight * 10,
+            alpha: fade * Math.min(1, flight * 3), head: 9, fletch: true, spark: true,
+          });
+          // A curved fang for a head — this is Venom Fang, not a plain arrow.
+          fangForm(g, snap(cx - Math.cos(arrow.angle) * 12), snap(cy - Math.sin(arrow.angle) * 12), {
+            palette: pal, tone: 1, angle: arrow.angle, length: 14, width: 8,
+            curve: 0.4, alpha: fade * Math.min(1, flight * 3), grow: 1,
+          });
+          // Venom shaken off the shaft on the way down.
+          for (let i = 0; i < 4; i++) {
+            const tail = 26 + i * 13;
+            debrisChunk(g, snap(cx - Math.cos(arrow.angle) * tail
+              + Math.sin(arrow.angle + i * 2.1) * P * 3),
+            snap(cy - Math.sin(arrow.angle) * tail + Math.cos(arrow.angle + i * 2.1) * P * 3), {
+              palette: pal, tone: 1 + (i % 3), size: 4 - (i % 2),
+              alpha: fade * flight * (0.7 - i * 0.13), seed: i * 5, spin: i,
+            });
+          }
         }
       }
 
@@ -2258,6 +2832,7 @@ export default class SkillSystem {
       this.scene.fx.impact({ color: VENOM_PALETTE[2], shake: 0.012, flash: 0.24, stop: 75 });
       this.#report(shot.skill, shot.hitSet.size);
       g.destroy();
+      back.destroy();
       this.venomShots = this.venomShots.filter((s) => s !== shot);
     }
   }
@@ -2295,14 +2870,28 @@ export default class SkillSystem {
       const g = poison.gfx;
       g.clear();
       if (target.alive && poison.left > 0) {
+        const pal = VENOM_PALETTE;
         const baseY = target.y - 4;
-        for (let i = 0; i < 11; i++) {
-          const ph = (poison.age * (0.58 + (i % 4) * 0.13) + i / 11) % 1;
-          const px = snap(target.x + Math.sin(poison.phase + i * 2.27) * (8 + (i % 4) * 4));
-          const py = snap(baseY - ph * (target.spriteHeight * 0.72));
-          g.fillStyle(i % 3 === 0 ? NIGHTVEIL_PALETTE[4] : VENOM_PALETTE[1 + (i % 3)],
-            (1 - ph) * 0.64);
-          pxDisc(g, px, py, i % 4 === 0 ? P * 2 : P, i % 5 === 0 ? P * 2 : P);
+        const h = target.spriteHeight;
+        // Three columns of vapour boiling off the body, plus fat droplets of
+        // venom running down it. The tick beat brightens the whole thing.
+        const beat = Math.max(0, 1 - (poison.every - poison.tick) / 0.22);
+        for (let i = 0; i < 3; i++) {
+          const ph = (poison.age * (0.62 + i * 0.11) + i / 3) % 1;
+          dustPuff(g, snap(target.x + Math.sin(poison.phase + i * 2.27) * (7 + i * 4)),
+            snap(baseY - ph * h * 0.85), {
+              palette: pal, tone: 1 + (i % 2), size: 7 + ph * 7,
+              alpha: (1 - ph) * (0.34 + beat * 0.22), lumps: 3,
+              seed: poison.phase + i * 3.1, squash: 0.85,
+            });
+        }
+        for (let i = 0; i < 5; i++) {
+          const ph = (poison.age * (0.9 + (i % 3) * 0.2) + i / 5) % 1;
+          debrisChunk(g, snap(target.x + Math.sin(poison.phase * 1.4 + i * 1.9) * (h * 0.2)),
+            snap(target.y - h * 0.78 + ph * h * 0.7), {
+              palette: pal, tone: 1 + (i % 3), size: 3 + (i % 2) * 2,
+              alpha: (1 - ph * 0.6) * (0.55 + beat * 0.35), seed: i * 4, spin: i,
+            });
         }
         continue;
       }
@@ -2335,79 +2924,99 @@ export default class SkillSystem {
       const air = trap.gfxAir;
       g.clear();
       air.clear();
+      const pal = NIGHTVEIL_PALETTE;
+      const gy = trap.y + 5;
 
-      // Layered abyss: a breathing black core, three counter-rotating seals,
-      // and irregular edge fractures keep the trap threatening while it lasts.
-      g.fillStyle(NIGHTVEIL_PALETTE[7], (0.32 + pulse * 0.12) * fade);
-      pxDisc(g, trap.x, trap.y + 5, r, r * GROUND_SQUASH, { every: 3 });
-      g.fillStyle(NIGHTVEIL_PALETTE[6], (0.36 + pulse * 0.16) * fade);
-      pxDisc(g, trap.x, trap.y + 5, r * (0.3 + pulse * 0.09), r * (0.3 + pulse * 0.09) * GROUND_SQUASH, { every: 2 });
-      g.fillStyle(NIGHTVEIL_PALETTE[4], 0.78 * fade);
-      pxGroundRing(g, trap.x, trap.y + 5, r, { dash: 5, gap: 2, rot: trap.age * 18 });
-      g.fillStyle(NIGHTVEIL_PALETTE[2], 0.58 * fade);
-      pxGroundRing(g, trap.x, trap.y + 5, r * 0.62, { dash: 2, gap: 3, rot: -trap.age * 24 });
-      g.fillStyle(NIGHTVEIL_PALETTE[1], (0.38 + pulse * 0.26) * fade);
-      pxGroundRing(g, trap.x, trap.y + 5, r * (0.3 + pulse * 0.08), {
-        dash: 2, gap: 2, rot: trap.age * 35,
+      // ── the pit: a shaft going down, with a binding circle written round it ─
+      g.fillStyle(shade(pal, 7), (0.44 + pulse * 0.12) * fade);
+      pxDisc(g, trap.x, gy, r, r * GROUND_SQUASH, { every: 1 });
+      g.fillStyle(shade(pal, 6), (0.6 + pulse * 0.16) * fade);
+      pxDisc(g, trap.x, gy, r * 0.66, r * 0.66 * GROUND_SQUASH, { every: 2 });
+      // The far lip catches the glow from below, which is what makes the black
+      // read as a hole rather than a disc lying on the stone.
+      crescentForm(g, snap(trap.x), snap(gy - r * 0.2 * GROUND_SQUASH), {
+        palette: pal, tone: 3, r: r * 0.52, bite: 0.68, angle: -Math.PI / 2,
+        alpha: (0.5 + pulse * 0.2) * fade, squash: GROUND_SQUASH * 1.1, rim: true,
       });
-      // Eight hooked teeth point inward while branching cracks reach outward.
-      for (let i = 0; i < 12; i++) {
-        const a = trap.phase + (i / 12) * Math.PI * 2;
-        const inner = r * (0.34 + (i % 3) * 0.04);
-        const outer = r * (0.78 + (i % 2) * 0.12);
-        g.fillStyle(NIGHTVEIL_PALETTE[3 + (i % 3)], (0.42 + (i % 3) * 0.12) * fade);
-        pxLine(g, trap.x + Math.cos(a) * outer, trap.y + 5 + Math.sin(a) * outer * GROUND_SQUASH,
-          trap.x + Math.cos(a + 0.12) * inner, trap.y + 5 + Math.sin(a + 0.12) * inner * GROUND_SQUASH);
-        if (i % 2 === 0) {
-          pxLine(g, trap.x + Math.cos(a) * outer, trap.y + 5 + Math.sin(a) * outer * GROUND_SQUASH,
-            trap.x + Math.cos(a) * r * 1.08, trap.y + 5 + Math.sin(a) * r * 1.08 * GROUND_SQUASH);
-        }
+      g.fillStyle(shade(pal, 3), (0.5 + pulse * 0.3) * fade);
+      pxDisc(g, trap.x, gy, r * (0.2 + pulse * 0.06), r * (0.2 + pulse * 0.06) * GROUND_SQUASH);
+      g.fillStyle(shade(pal, 1), (0.35 + pulse * 0.4) * fade);
+      pxDisc(g, trap.x, gy, r * 0.09, r * 0.09 * GROUND_SQUASH);
+      for (let ring = 0; ring < 2; ring++) {
+        groundBand(g, trap.x, gy, r * (1 - ring * 0.38), {
+          palette: pal, tone: ring ? 1 : 3, thickness: P * (3 - ring),
+          alpha: (0.85 - ring * 0.2) * fade, bite: 1.2 + ring * 0.8,
+          seed: ring * 6 + Math.floor(trap.age * 4), glint: ring === 0,
+        });
       }
-      // Shadow chains rise and curl above the captured group.
+      // Ten sigils turning on the rim: this is a bound circle, not a hole.
+      for (let i = 0; i < 10; i++) {
+        const a = trap.phase + (i / 10) * Math.PI * 2 + trap.age * 0.6;
+        runeGlyph(g, snap(trap.x + Math.cos(a) * r * 0.86),
+          snap(gy + Math.sin(a) * r * 0.86 * GROUND_SQUASH), {
+            palette: pal, tone: 1 + (i % 3), size: 8 + (i % 2) * 3,
+            alpha: (0.45 + pulse * 0.45) * fade * open, variant: i,
+          });
+      }
+      // Hooked stone teeth leaning inward over the lip.
+      for (let i = 0; i < 10; i++) {
+        const a = trap.phase * 1.3 + (i / 10) * Math.PI * 2;
+        const outer = r * (0.92 + (i % 2) * 0.1);
+        solidWedge(g, trap.x + Math.cos(a) * outer, gy + Math.sin(a) * outer * GROUND_SQUASH, {
+          palette: pal, tone: 4 + (i % 2), angle: a + Math.PI,
+          r0: 0, r1: r * (0.3 + (i % 3) * 0.07), w0: P * 5, w1: P,
+          alpha: (0.72 + pulse * 0.2) * fade, squash: GROUND_SQUASH,
+          taper: 1.5, notch: true, glint: i % 3 === 0, seed: i * 4,
+        });
+      }
       for (let i = 0; i < 7; i++) {
-        const a = trap.phase + i * 2.41;
-        const bx = trap.x + Math.cos(a) * r * 0.6;
-        const by = trap.y + Math.sin(a) * r * 0.28;
-        const height = (24 + (i % 4) * 9) * Math.sin(open * Math.PI * 0.72);
-        air.fillStyle(NIGHTVEIL_PALETTE[2 + (i % 4)], (0.38 + (i % 3) * 0.12) * fade);
-        for (let link = 0; link < 5; link++) {
-          const ly = by - height * (link / 5);
-          const lx = bx + Math.sin(trap.age * 8 + i + link) * P * 2;
-          pxArc(air, lx, ly, P * 2, P * 3, { from: 0, to: Math.PI * 2, dash: 2, gap: 1 });
-        }
+        const a = trap.phase + (i / 7) * Math.PI * 2;
+        groundCrack(g, snap(trap.x + Math.cos(a) * r * 0.9),
+          snap(gy + Math.sin(a) * r * 0.9 * GROUND_SQUASH), {
+            palette: pal, tone: 3, angle: a, length: r * (0.32 + (i % 3) * 0.14),
+            alpha: 0.6 * fade, reveal: open, seed: i * 5, branches: 2, width: P * 2,
+          });
       }
 
-      // Six spectral hands breach the rim, opening and closing around anyone
-      // inside. Their fingers are deliberately offset so the animation has a
-      // restless, grasping rhythm rather than a static ring of decorations.
+      // ── six arms out of the pit, grasping on their own rhythm ────────────
       for (let hand = 0; hand < 6; hand++) {
         const a = trap.phase + hand * (Math.PI * 2 / 6) + Math.sin(trap.age * 2 + hand) * 0.08;
-        const hx = trap.x + Math.cos(a) * r * 0.76;
-        const hy = trap.y + 4 + Math.sin(a) * r * 0.38;
-        const rise = (18 + pulse * 14 + (hand % 2) * 7) * open;
+        const bx = snap(trap.x + Math.cos(a) * r * 0.62);
+        const by = snap(gy + Math.sin(a) * r * 0.62 * GROUND_SQUASH);
+        const grip = 0.5 + 0.5 * Math.sin(trap.age * 7 + hand * 1.7);
+        const rise = (30 + grip * 16 + (hand % 2) * 8) * open;
         const sway = Math.sin(trap.age * 9 + hand * 1.8) * P * 2;
-        air.fillStyle(NIGHTVEIL_PALETTE[3 + (hand % 2)], (0.38 + pulse * 0.24) * fade);
-        pxDisc(air, hx + sway, hy - rise * 0.42, P * 3, P * 4, { every: 1 });
-        for (let finger = -2; finger <= 2; finger++) {
-          const fx = hx + sway + finger * P * 2;
-          const fy = hy - rise * 0.42;
-          air.fillStyle(NIGHTVEIL_PALETTE[1 + ((hand + finger + 4) % 4)], (0.44 + pulse * 0.22) * fade);
-          pxLine(air, fx, fy, fx + Math.sin(a) * P * 2, fy - rise * (0.48 + Math.abs(finger) * 0.05));
-        }
+        const hx = snap(bx + sway);
+        const hy = snap(by - rise);
+        // the forearm, still half in the ground
+        solidWedge(air, bx, by + P, {
+          palette: pal, tone: 4, angle: Math.atan2(hy - by, hx - bx),
+          r0: 0, r1: rise + P * 2, w0: P * 5, w1: P * 3,
+          alpha: (0.76 + pulse * 0.18) * fade, taper: 1.1, notch: true, seed: hand * 3,
+        });
+        // A shadow behind the hand: it breaches over the bright seal, and two
+        // pale silhouettes on top of each other read as one smear.
+        air.fillStyle(shade(pal, 7), 0.6 * fade);
+        pxDisc(air, hx, hy, snap(15 + grip * 4), snap(13 + grip * 3));
+        clawHand(air, hx, hy, {
+          palette: pal, tone: 3, angle: -Math.PI / 2 + Math.sin(a) * 0.5,
+          size: 22 + grip * 6, alpha: (0.82 + pulse * 0.18) * fade,
+          close: 0.22 + grip * 0.62, squash: 0.9,
+        });
       }
 
-      // Drifting violet souls rise from the seal for its whole lifetime.
-      for (let mote = 0; mote < 30; mote++) {
-        const q = ((mote * 23) % 31) / 30;
-        const ma = trap.phase + mote * 2.27 + trap.age * (mote % 2 ? 0.45 : -0.35);
-        const mr = r * (0.16 + q * 0.78);
-        const lift = (trap.age * (15 + (mote % 5) * 5) + mote * 11) % 46;
-        const mx = snap(trap.x + Math.cos(ma) * mr);
-        const my = snap(trap.y + 4 + Math.sin(ma) * mr * GROUND_SQUASH - lift);
-        air.fillStyle(mote % 5 === 0 ? NIGHTVEIL_PALETTE[1] : NIGHTVEIL_PALETTE[3 + (mote % 3)],
-          (0.24 + (mote % 4) * 0.11) * fade);
-        air.fillRect(mx, my, mote % 7 === 0 ? P * 2 : P, mote % 6 === 0 ? P * 2 : P);
-        if (mote % 10 === 0) pxStar(air, mx, my, P);
+      // Souls torn loose, spiralling up out of the seal.
+      for (let mote = 0; mote < 14; mote++) {
+        const q = ((mote * 5) % 14) / 13;
+        const ma = trap.phase + mote * 2.27 + trap.age * (mote % 2 ? 0.55 : -0.4);
+        const mr = r * (0.2 + q * 0.74);
+        const lift = (trap.age * (18 + (mote % 5) * 6) + mote * 9) % 52;
+        debrisChunk(air, snap(trap.x + Math.cos(ma) * mr),
+          snap(gy + Math.sin(ma) * mr * GROUND_SQUASH - lift), {
+            palette: pal, tone: 1 + (mote % 4), size: 3 + (mote % 3) * 2,
+            alpha: (1 - lift / 52) * (0.5 + (mote % 3) * 0.16) * fade,
+            seed: mote * 4, spin: mote,
+          });
       }
 
       if (p < 1) continue;
@@ -2472,45 +3081,103 @@ export default class SkillSystem {
       const air = eclipse.gfxAir;
       g.clear();
       air.clear();
+      const pal = NIGHTVEIL_PALETTE;
       const r = eclipse.radius * open;
-      g.fillStyle(NIGHTVEIL_PALETTE[7], 0.3 * fade);
-      pxDisc(g, eclipse.x, eclipse.y + 6, r, r * GROUND_SQUASH, { every: 3 });
-      g.fillStyle(NIGHTVEIL_PALETTE[4], 0.72 * fade);
-      pxGroundRing(g, eclipse.x, eclipse.y + 6, r, {
-        dash: 8, gap: 3, rot: eclipse.age * 14,
-      });
-      g.fillStyle(NIGHTVEIL_PALETTE[2], 0.48 * fade);
-      pxGroundRing(g, eclipse.x, eclipse.y + 6, r * 0.72, {
-        dash: 3, gap: 4, rot: -eclipse.age * 20,
-      });
-      // Radial runic arrowheads make the seal belong to an archer.
-      for (let i = 0; i < 18; i++) {
-        const a = eclipse.phase + (i / 18) * Math.PI * 2 + eclipse.age * 0.18;
-        const ax = eclipse.x + Math.cos(a) * r * 0.86;
-        const ay = eclipse.y + 6 + Math.sin(a) * r * 0.86 * GROUND_SQUASH;
-        g.fillStyle(NIGHTVEIL_PALETTE[1 + (i % 5)], (0.4 + (i % 3) * 0.12) * fade);
-        pxLine(g, ax, ay, ax - Math.cos(a) * P * 5, ay - Math.sin(a) * P * 3);
-        pxLine(g, ax, ay, ax + Math.cos(a + 2.5) * P * 4, ay + Math.sin(a + 2.5) * P * 3);
+      const gy = eclipse.y + 6;
+      // How long since the last volley actually landed — every layer below
+      // punches on this beat, so the seal breathes with the damage ticks
+      // instead of on a decorative sine of its own.
+      const beat = Math.max(0, 1 - (eclipse.age - (eclipse.nextWave - eclipse.interval)) / 0.2);
+      const built = eclipse.wave / eclipse.waves;
+
+      // ── the seal: a wide dark bowl the volleys are being funnelled into ───
+      g.fillStyle(shade(pal, 7), (0.34 + beat * 0.14) * fade);
+      pxDisc(g, eclipse.x, gy, r, r * GROUND_SQUASH, { every: 2 });
+      g.fillStyle(shade(pal, 5), (0.24 + beat * 0.3) * fade);
+      pxDisc(g, eclipse.x, gy, r * (0.4 + beat * 0.24), r * (0.4 + beat * 0.24) * GROUND_SQUASH, { every: 3 });
+      for (let ring = 0; ring < 3; ring++) {
+        groundBand(g, eclipse.x, gy, r * (1 - ring * 0.27), {
+          palette: pal, tone: ring === 0 ? 2 : 3 + ring,
+          thickness: P * (3 - ring * 0.5),
+          alpha: (0.66 - ring * 0.14 + beat * 0.16) * fade,
+          bite: 1 + ring * 0.7, seed: ring * 6 + eclipse.wave * 3,
+          glint: false,
+        });
+      }
+      // A ring of arrowheads driven into the stone, pointing inward: the seal
+      // belongs to an archer, not to a generic circle of runes.
+      for (let i = 0; i < 12; i++) {
+        const a = eclipse.phase + (i / 12) * Math.PI * 2 + eclipse.age * 0.22;
+        const outer = r * 0.93;
+        solidWedge(g, eclipse.x + Math.cos(a) * outer, gy + Math.sin(a) * outer * GROUND_SQUASH, {
+          palette: pal, tone: 3 + (i % 2), angle: a + Math.PI,
+          r0: 0, r1: r * 0.19, w0: P * 5, w1: P,
+          alpha: (0.62 + beat * 0.22) * fade, squash: GROUND_SQUASH,
+          taper: 1.6, notch: true, seed: i * 5,
+        });
+        runeGlyph(g, snap(eclipse.x + Math.cos(a) * r * 0.66),
+          snap(gy + Math.sin(a) * r * 0.66 * GROUND_SQUASH), {
+            palette: pal, tone: 2 + (i % 2), size: 8 + (i % 2) * 3,
+            alpha: (0.28 + beat * 0.4) * fade * open, variant: i + 3,
+          });
+      }
+      // The floor loses more of itself with every volley that lands.
+      for (let i = 0; i < 8; i++) {
+        const a = eclipse.phase * 1.4 + (i / 8) * Math.PI * 2;
+        groundCrack(g, snap(eclipse.x + Math.cos(a) * r * 0.3),
+          snap(gy + Math.sin(a) * r * 0.3 * GROUND_SQUASH), {
+            palette: pal, tone: 4, angle: a, length: r * 0.72,
+            alpha: 0.6 * fade, reveal: Math.min(1, built * 1.2),
+            seed: i * 7, branches: 3, width: P * 2,
+          });
       }
 
-      // A suspended crescent and crown of rays hang over the impact zone.
+      // ── the eclipse: a black sun with a corona, hanging over the seal ─────
       const moonY = eclipse.y - 116;
-      air.fillStyle(NIGHTVEIL_PALETTE[2], 0.46 * open * fade);
-      pxDisc(air, eclipse.x, moonY, 31, 31, { every: 2 });
-      air.fillStyle(NIGHTVEIL_PALETTE[7], 0.72 * open * fade);
-      pxDisc(air, eclipse.x + 12, moonY - 5, 27, 27, { every: 2 });
-      for (let i = 0; i < 14; i++) {
-        const a = eclipse.phase + (i / 14) * Math.PI * 2 - eclipse.age * 0.32;
-        air.fillStyle(NIGHTVEIL_PALETTE[2 + (i % 4)], (0.24 + (i % 3) * 0.09) * fade);
-        pxLine(air,
-          eclipse.x + Math.cos(a) * 38, moonY + Math.sin(a) * 38,
-          eclipse.x + Math.cos(a) * (45 + (i % 3) * 5),
-          moonY + Math.sin(a) * (45 + (i % 3) * 5));
+      const moonR = 30 + beat * 5;
+      // The corona first, so the black disc bites a hole out of it.
+      for (let i = 0; i < 18; i++) {
+        const a = eclipse.phase + (i / 18) * Math.PI * 2 - eclipse.age * 0.34;
+        solidWedge(air, snap(eclipse.x + Math.cos(a) * moonR * 0.9),
+          snap(moonY + Math.sin(a) * moonR * 0.9), {
+            palette: pal, tone: 2 + (i % 3), angle: a,
+            r0: 0, r1: (16 + (i % 4) * 13) * (0.7 + beat * 0.5),
+            w0: P * 4, w1: P, alpha: (0.5 - (i % 3) * 0.1 + beat * 0.18) * open * fade,
+            taper: 1.5, notch: i % 2 === 0, seed: i * 3,
+          });
       }
+      for (let s = 0; s < 2; s++) {
+        const spin = eclipse.age * (s ? 1.6 : -1.15) + s * 2.1;
+        solidArcBand(air, eclipse.x, moonY, {
+          palette: pal, tone: s ? 4 : 2, from: spin, to: spin + Math.PI * 1.35,
+          r: moonR * (1.16 + s * 0.24), thickness: P * (2.5 - s * 0.5),
+          alpha: (0.55 - s * 0.16) * open * fade, squash: 0.9,
+          taperEnds: 0.5, seed: s * 9,
+        });
+      }
+      // The lit sliver goes down first and the black body is stamped over it,
+      // so what survives is a rim of light escaping round one side — an
+      // eclipse, not a bright moon with a dark bite taken out of it.
+      crescentForm(air, snap(eclipse.x), snap(moonY), {
+        palette: pal, tone: 1, r: moonR + P * 3, bite: 0.9,
+        angle: -0.5 + Math.sin(eclipse.age * 0.9) * 0.35,
+        alpha: (0.8 + beat * 0.2) * open * fade, squash: 1, rim: true,
+      });
+      air.fillStyle(shade(pal, 7), 0.95 * open * fade);
+      pxDisc(air, eclipse.x, moonY, snap(moonR), snap(moonR));
+      air.fillStyle(shade(pal, 6), 0.5 * open * fade);
+      pxDisc(air, eclipse.x, moonY, snap(moonR * 0.72), snap(moonR * 0.72), { every: 2 });
+      // A shaft of dark light between the eclipse and the seal, so the arrows
+      // are visibly coming from somewhere.
+      solidWedge(air, snap(eclipse.x), snap(moonY + moonR * 0.6), {
+        palette: pal, tone: 5, angle: Math.PI / 2,
+        r0: 0, r1: 116 - moonR * 0.6, w0: moonR * 0.9, w1: r * 0.78,
+        alpha: (0.2 + beat * 0.16) * open * fade, taper: 1, seed: 4,
+      });
 
       // Each arrow follows a different deterministic lane through the warned
       // circle. More lanes appear as successive waves build toward the finale.
-      const arrowCount = 22 + eclipse.wave * 4;
+      const arrowCount = 13 + eclipse.wave * 2;
       const waveP = ((eclipse.age - 0.16) / eclipse.interval + 10) % 1;
       for (let i = 0; i < arrowCount; i++) {
         const a = eclipse.phase + i * 2.399;
@@ -2519,12 +3186,48 @@ export default class SkillSystem {
         const groundY = eclipse.y + Math.sin(a) * eclipse.radius * spread * 0.46;
         const q = (waveP + (i % 7) / 7) % 1;
         const ay = snap(groundY - (1 - q) * (125 + (i % 5) * 13));
-        air.fillStyle(NIGHTVEIL_PALETTE[1 + (i % 5)], (0.34 + q * 0.58) * fade);
-        pxLine(air, ax - P * 2, ay - P * 5, ax + P, ay + P * 7);
-        if (q > 0.86) {
-          air.fillStyle(i % 3 === 0 ? VENOM_PALETTE[1] : NIGHTVEIL_PALETTE[2],
-            (q - 0.86) * 5.5 * fade);
-          pxStar(air, ax, groundY, P * (i % 4 === 0 ? 3 : 2));
+        const lean = ((i % 5) - 2) * 0.07;
+        if (q < 0.9) {
+          const av = (0.55 + q * 0.45) * fade;
+          arrowForm(air, ax, ay, {
+            palette: pal, tone: 1 + (i % 3), angle: Math.PI / 2 + lean,
+            length: 30 + (i % 3) * 8, alpha: av,
+            head: 9, fletch: false, spark: q > 0.5,
+          });
+          // A real barbed head on the leading end, and two short feathers at
+          // the nock. arrowForm's own fletching is wider than its head, which
+          // on a shaft seen falling almost end-on reads as a hanging "T".
+          solidWedge(air, ax, snap(ay - 13), {
+            palette: pal, tone: 1 + (i % 2), angle: Math.PI / 2 + lean,
+            r0: 0, r1: 13, w0: P * 5, w1: P, alpha: av,
+            taper: 1.35, notch: true, glint: i % 3 === 0, seed: i * 2,
+          });
+          for (const side of [-1, 1]) {
+            solidWedge(air, ax, snap(ay - (30 + (i % 3) * 8)), {
+              palette: pal, tone: 3, angle: -Math.PI / 2 + lean + side * 0.7,
+              r0: 0, r1: 9, w0: P * 2, w1: P, alpha: av * 0.85,
+              taper: 1.2, seed: i + (side > 0 ? 5 : 11),
+            });
+          }
+        } else {
+          // The last beat of a lane is the hit: the shaft shatters on the stone.
+          const hit = (q - 0.9) / 0.1;
+          shardFan(air, ax, snap(groundY), {
+            palette: pal, tone: i % 4 === 0 ? 0 : 1, angle: -Math.PI / 2,
+            spread: 2.5, count: 5, r0: 3, r1: 10 + hit * 22,
+            alpha: (1 - hit) * 0.95 * fade, squash: 0.7, width: P * 2, seed: i * 3,
+          });
+          for (let d = 0; d < 3; d++) {
+            debrisChunk(air, snap(ax + ((d - 1) * 7 + (i % 3) * 2)),
+              snap(groundY - hit * (14 + d * 6)), {
+                palette: pal, tone: 2 + ((i + d) % 3), size: 3 + (d % 2) * 2,
+                alpha: (1 - hit) * 0.8 * fade, seed: i + d * 5, spin: d,
+              });
+          }
+          dustPuff(air, ax, snap(groundY - 4), {
+            palette: pal, tone: 4, size: 12 + hit * 14,
+            alpha: (1 - hit) * 0.4 * fade, lumps: 3, seed: i * 2, squash: 0.75,
+          });
         }
       }
 
@@ -2561,6 +3264,9 @@ export default class SkillSystem {
       age: 0,
       trails: [],
       gfx: this.scene.add.graphics().setDepth(DEPTH.unitFx),
+      // Afterimages and the air-rake belong *behind* the fighters; only the
+      // claw marks and the landing flash sit in front of them.
+      gfxBack: this.scene.add.graphics().setDepth(DEPTH.ghost),
     };
     this.felineDashes.push(dash);
     this.#executeFelineBlink(dash);
@@ -2607,25 +3313,107 @@ export default class SkillSystem {
       }
 
       const g = dash.gfx;
+      const back = dash.gfxBack;
       g.clear();
+      back.clear();
       dash.trails = dash.trails.filter((trail) => dash.age - trail.bornAt < dash.trailLife);
-      // The hero position snaps immediately; these claw-lined trails connect
-      // the previous and next points so three teleports remain readable.
+      // The hero position snaps immediately, so each hop has to be *told* after
+      // the fact: a rake of air behind the leap, three afterimages of the monk
+      // strung along it, and the claw marks it left at the far end.
+      const pal = SOLAR_PALETTE;
       for (const trail of dash.trails) {
         const p = (dash.age - trail.bornAt) / dash.trailLife;
-        const fade = Math.max(0, 1 - p);
-        for (let claw = -2; claw <= 2; claw++) {
-          const nx = -Math.sin(trail.angle) * claw * P * 2;
-          const ny = Math.cos(trail.angle) * claw * P * 2;
-          g.fillStyle(SOLAR_PALETTE[claw === 0 ? 1 : 3], (0.24 + (2 - Math.abs(claw)) * 0.09) * fade);
-          pxLine(g, trail.startX + nx, trail.startY - 28 + ny, trail.endX + nx, trail.endY - 28 + ny);
+        const fade = Math.max(0, 1 - p) ** 1.2;
+        if (fade <= 0.02) continue;
+        const chest = hero.spriteHeight * 0.5;
+        const sx = trail.startX;
+        const sy = trail.startY - chest;
+        const ex = trail.endX;
+        const ey = trail.endY - chest;
+        const len = Math.hypot(ex - sx, ey - sy);
+        const back180 = trail.angle + Math.PI;
+        const facing = Math.cos(trail.angle) >= 0 ? 1 : -1;
+        const nx = -Math.sin(trail.angle);
+        const ny = Math.cos(trail.angle);
+
+        // ── the leap: a bowed arc, not a straight beam. Six chained segments
+        // widen toward the landing, with two claw lines raked parallel ─────
+        const bow = -Math.min(54, len * 0.26);
+        const arcAt = (q, base) => base + bow * Math.sin(Math.PI * q);
+        if (len > P * 3) {
+          const segs = 6;
+          for (let i = 0; i < segs; i++) {
+            const q0 = i / segs;
+            const q1 = (i + 1) / segs;
+            const ax = sx + (ex - sx) * q0;
+            const ay = arcAt(q0, sy + (ey - sy) * q0);
+            const bx2 = sx + (ex - sx) * q1;
+            const by2 = arcAt(q1, sy + (ey - sy) * q1);
+            const a = Math.atan2(by2 - ay, bx2 - ax);
+            const seglen = Math.hypot(bx2 - ax, by2 - ay) + P;
+            const w = P * (1.5 + 6 * q1);
+            solidWedge(back, ax, ay, {
+              palette: pal, tone: 2, angle: a, r0: 0, r1: seglen,
+              w0: w - P, w1: w, alpha: fade * (0.45 + q1 * 0.5),
+              taper: 1, notch: false, seed: i * 3,
+            });
+            for (const s of [-1, 1]) {
+              const off = (5 + 7 * q1) * s;
+              solidWedge(back, ax + nx * off, ay + ny * off, {
+                palette: pal, tone: 4, angle: a, r0: 0, r1: seglen,
+                w0: P, w1: P * 2, alpha: fade * 0.55 * q1,
+                taper: 1, notch: false, seed: i + (s > 0 ? 11 : 17),
+              });
+            }
+          }
         }
-        g.fillStyle(SOLAR_PALETTE[1], 0.75 * fade);
-        pxStar(g, trail.endX, trail.endY - hero.spriteHeight * 0.45, P * 3);
+
+        // ── three afterimages of the monk, lifted along the same arc ───────
+        for (let i = 0; i < 3; i++) {
+          const q = 0.22 + i * 0.28;
+          figureForm(back,
+            snap(trail.startX + (trail.endX - trail.startX) * q),
+            snap(arcAt(q, trail.startY + (trail.endY - trail.startY) * q)), {
+              palette: pal, tone: 4 - i, height: hero.spriteHeight * 0.92,
+              alpha: fade * (0.26 + i * 0.18), facing, lean: facing * 6,
+              cloak: 0.9, rimTone: 1,
+            });
+        }
+
+        // ── dust kicked at both ends ──────────────────────────────────────
+        dustPuff(back, trail.startX, trail.startY + 2, {
+          palette: pal, tone: 5, size: 13 + p * 16, alpha: fade * 0.4,
+          lumps: 4, seed: 2, squash: 0.5,
+        });
+        dustPuff(back, trail.endX - facing * 8, trail.endY + 2, {
+          palette: pal, tone: 4, size: 11 + p * 20, alpha: fade * 0.5,
+          lumps: 4, seed: 6, squash: 0.5,
+        });
+
+        // ── the strike: claw marks torn open across the landing, plus the
+        // crescent of the pounce itself ───────────────────────────────────
+        const strike = Phaser.Math.Clamp(p / 0.26, 0, 1);
+        const strikeFade = fade * (1 - Math.max(0, p - 0.45) / 0.55);
+        if (strikeFade > 0.02) {
+          clawGash(g, ex + facing * 6, ey - 4, {
+            palette: pal, tone: 1, angle: trail.angle - facing * 0.32,
+            length: 46, spread: 11, claws: 4, alpha: strikeFade,
+            width: P * 4, reveal: strike, seed: 4,
+          });
+          crescentForm(g, ex + facing * 14, ey, {
+            palette: pal, tone: 2, r: 16 + strike * 13, bite: 0.66,
+            angle: back180, alpha: strikeFade * 0.8, squash: 1.15,
+          });
+          shardFan(g, ex + facing * 10, ey, {
+            palette: pal, tone: 0, angle: trail.angle, spread: 1.5, count: 4,
+            r0: 6, r1: 14 + strike * 16, alpha: strikeFade * 0.9, seed: 7, width: P * 2,
+          });
+        }
       }
 
       if (dash.jump < dash.targets.length || dash.trails.length) continue;
       g.destroy();
+      back.destroy();
       this.felineDashes = this.felineDashes.filter((d) => d !== dash);
     }
   }
@@ -2635,6 +3423,7 @@ export default class SkillSystem {
     this.burningPalms.push({
       x: hero.x + facing * 18,
       y: hero.y - hero.spriteHeight * 0.48,
+      groundY: hero.y,
       dir: facing,
       range: eff.radius ?? 220,
       life: opts.life ?? eff.fxLife ?? 0.62,
@@ -2644,6 +3433,8 @@ export default class SkillSystem {
       age: 0,
       phase: Phaser.Math.FloatBetween(0, Math.PI * 2),
       gfx: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
+      // Scorch marks it leaves on the floor as it passes, under the fighters.
+      gfxBack: this.scene.add.graphics().setDepth(DEPTH.floorDecal),
     });
     this.scene.fx.skillBurst(hero.x + facing * 22, hero.y - hero.spriteHeight * 0.48,
       SOLAR_PALETTE[2], 'explosion');
@@ -2663,38 +3454,91 @@ export default class SkillSystem {
       const cx = snap(palm.x + palm.dir * travel);
       const cy = snap(palm.y + Math.sin(palm.phase + p * 8) * P * 2);
       const g = palm.gfx;
+      const back = palm.gfxBack;
       g.clear();
+      back.clear();
+      const pal = SOLAR_PALETTE;
+      const dir = palm.dir;
+      const aim = dir > 0 ? 0 : Math.PI;
 
-      // A broad palm pad with four forward knuckles creates the lion-paw read.
-      g.fillStyle(SOLAR_PALETTE[5], 0.28 * fade);
-      pxDisc(g, cx, cy, 21 * size, 15 * size, { every: 2 });
-      g.fillStyle(SOLAR_PALETTE[3], 0.78 * fade);
-      pxDisc(g, cx, cy, 13 * size, 10 * size);
-      g.fillStyle(SOLAR_PALETTE[1], 0.92 * fade);
-      pxDisc(g, cx + palm.dir * 3 * size, cy, 7 * size, 6 * size);
-      for (let toe = 0; toe < 4; toe++) {
-        const ty = cy + (toe - 1.5) * 8 * size;
-        const tx = cx + palm.dir * (13 + (toe % 2) * 3) * size;
-        g.fillStyle(SOLAR_PALETTE[2 + (toe % 3)], (0.68 + toe * 0.06) * fade);
-        pxDisc(g, tx, ty, 7 * size, 5 * size);
-        g.fillStyle(SOLAR_PALETTE[0], 0.72 * fade);
-        pxLine(g, tx + palm.dir * 3 * size, ty,
-          tx + palm.dir * (10 + (toe % 2) * 3) * size, ty);
+      // ── the floor it has already crossed keeps burning ───────────────────
+      // Scorch blots are laid down behind the paw, oldest and coolest first, so
+      // the cone the telegraph promised is still legible after the paw is gone.
+      const gy = snap((palm.groundY ?? palm.y + 30) + 4);
+      for (let i = 0; i < 7; i++) {
+        const q = i / 6;
+        const bx = snap(palm.x + dir * travel * q);
+        const heat = Math.max(0, 1 - (travel * (1 - q)) / (palm.range * 0.55));
+        const rad = (10 + q * 15) * growth;
+        back.fillStyle(shade(pal, 6), 0.5 * fade * (0.5 + q * 0.5));
+        pxDisc(back, bx, gy, rad, rad * GROUND_SQUASH, { every: 2 });
+        if (heat > 0.04) {
+          back.fillStyle(shade(pal, 3), 0.34 * fade * heat);
+          pxDisc(back, bx, gy, rad * 0.55, rad * 0.55 * GROUND_SQUASH, { every: 3 });
+        }
       }
 
-      // Flame ribbons peel off behind the paw instead of leaving one straight
-      // projectile trail.
-      for (let flame = 0; flame < 12; flame++) {
-        const q = flame / 11;
-        const fx = cx - palm.dir * (15 + q * 58) * size;
-        const fy = cy + Math.sin(palm.phase + flame * 1.73 + p * 11) * (5 + q * 17) * size;
-        g.fillStyle(SOLAR_PALETTE[1 + (flame % 5)], (0.72 - q * 0.54) * fade);
-        pxLine(g, fx, fy, fx - palm.dir * (5 + q * 10) * size, fy - (flame % 2 ? P * 2 : -P * 2));
-        if (flame % 4 === 0) pxStar(g, fx, fy, P * (palm.finisher ? 2 : 1));
+      // ── the paw: a real hand, palm-first, wreathed in flame ──────────────
+      // Smoke and outer flame first so the hand stays the crispest thing in it.
+      for (let i = 0; i < 4; i++) {
+        const q = i / 3;
+        dustPuff(g, cx - dir * (16 + q * 46) * size,
+          cy + Math.sin(palm.phase + q * 4 + p * 7) * 11 * size, {
+            palette: pal, tone: 5, size: (13 + q * 15) * size,
+            alpha: fade * (0.4 - q * 0.22), lumps: 3, seed: i * 5 + 1,
+          });
+      }
+      // Three tongues, staggered back along the path and fanned apart, so the
+      // wake stays a wake — five parallel ones comb into a striped pattern.
+      for (let i = 0; i < 3; i++) {
+        const spread = (i - 1) * 1.05;
+        flameTongue(g,
+          cx - dir * (14 + i * 15) * size, cy + spread * 13 * size, {
+            palette: pal, tone: 3 + (i % 2),
+            height: (26 + (i % 3) * 15) * size, width: (11 + (i % 2) * 7) * size,
+            angle: aim + Math.PI + spread * 0.62,
+            alpha: fade * (0.62 - Math.abs(spread) * 0.16),
+            sway: 13 * size, grow: 1, seed: palm.phase + i * 2.3 + p * 9,
+          });
+      }
+
+      clawHand(g, cx, cy, {
+        palette: pal, tone: 2, angle: aim, size: 30 * size,
+        alpha: fade, close: 0.32, squash: 0.94,
+      });
+      // A hot core in the pad, and a wedge of pressure ahead of it.
+      g.fillStyle(shade(pal, 1), fade * 0.6);
+      pxDisc(g, cx, cy, 5 * size, 4 * size);
+      g.fillStyle(shade(pal, 0), fade * (palm.finisher ? 0.8 : 0.55));
+      pxDisc(g, cx + dir * 2 * size, cy, 3 * size, 2.6 * size);
+      for (const s of [-1, 1]) {
+        solidWedge(g, cx + dir * 16 * size, cy + s * 9 * size, {
+          palette: pal, tone: 1, angle: aim + s * 0.34,
+          r0: 0, r1: (18 + p * 16) * size, w0: P * 3, w1: P,
+          alpha: fade * 0.75, taper: 1.5, notch: false, seed: s > 0 ? 2 : 9,
+        });
+      }
+      // Embers thrown off the knuckles.
+      for (let i = 0; i < 6; i++) {
+        const a = palm.phase + i * 1.9 + p * 5;
+        debrisChunk(g,
+          snap(cx - dir * (4 + (i % 3) * 12) * size + Math.cos(a) * 9 * size),
+          snap(cy + Math.sin(a) * 15 * size), {
+            palette: pal, tone: 1 + (i % 3), size: (3 + (i % 2) * 2) * size,
+            alpha: fade * 0.9, seed: i * 3, spin: i,
+          });
+      }
+      if (palm.finisher) {
+        // The ultimate's finisher lands a full maw behind the strike.
+        lionMaw(g, cx - dir * 6 * size, cy, {
+          palette: pal, tone: 2, size: 46 * size, alpha: fade * 0.55,
+          open: 0.4 + p * 0.6, maneSpin: palm.phase + p * 3, squash: 0.95,
+        });
       }
 
       if (p < 1) continue;
       g.destroy();
+      back.destroy();
       this.burningPalms = this.burningPalms.filter((wave) => wave !== palm);
     }
   }
@@ -2715,7 +3559,8 @@ export default class SkillSystem {
       gfxAir: this.scene.add.graphics().setDepth(DEPTH.telegraphAir),
     });
     this.scene.fx.skillBurst(hero.x, y, SOLAR_PALETTE[1], 'explosion');
-    this.scene.fx.popText(hero.x, hero.y - hero.spriteHeight - 12, 'SOLAR ROAR', SOLAR_PALETTE[1]);
+    // Clears the lion's head, which now rides well above the monk.
+    this.scene.fx.popText(hero.x, hero.y - hero.spriteHeight - 84, 'SOLAR ROAR', SOLAR_PALETTE[1]);
   }
 
   #tickSolarRoars(dt) {
@@ -2728,52 +3573,98 @@ export default class SkillSystem {
       const air = roar.gfxAir;
       g.clear();
       air.clear();
+      const pal = SOLAR_PALETTE;
+      const gy = roar.y + 18;
+      const punch = Math.max(0, 1 - p / 0.22);
 
-      // Three stepped pressure rings make the roar feel like it has mass.
+      // ── the floor takes the pressure ─────────────────────────────────────
+      // A hot wash inside the wave, then three stepped ridges: the leading one
+      // bright and thick, the two behind it settling and cooling.
+      g.fillStyle(shade(pal, 5), 0.2 * fade);
+      pxDisc(g, roar.x, gy, wave * 0.95, wave * 0.95 * GROUND_SQUASH, { every: 3 });
+      g.fillStyle(shade(pal, 2), (0.2 + punch * 0.4) * fade);
+      pxDisc(g, roar.x, gy, wave * 0.3, wave * 0.3 * GROUND_SQUASH, { every: 2 });
       for (let ring = 0; ring < 3; ring++) {
-        const r = Math.max(8, wave - ring * 18);
-        g.fillStyle(SOLAR_PALETTE[1 + ring], fade * (0.75 - ring * 0.16));
-        pxArc(g, roar.x, roar.y + 18, r, r * GROUND_SQUASH, {
-          dash: ring === 2 ? 3 : 0,
-          gap: ring === 2 ? 1 : 0,
-          rot: roar.phase + p * 2,
+        const r = Math.max(8, wave - ring * 20);
+        groundBand(g, roar.x, gy, r, {
+          palette: pal, tone: 1 + ring * 2,
+          thickness: P * (ring === 0 ? 3 : 2),
+          alpha: fade * (0.85 - ring * 0.22), bite: 1.3 + ring * 0.4,
+          seed: ring * 7 + 1, glint: ring === 0,
         });
       }
-      // Flame-like mane rays trail each ring, rather than one uniform circle.
-      for (let i = 0; i < 20; i++) {
-        const a = (Math.PI * 2 * i) / 20 + roar.phase * 0.16;
-        const inner = Math.max(10, wave - 18 - (i % 3) * 5);
-        const outer = wave + 10 + (i % 4) * 7;
-        const x1 = roar.x + Math.cos(a) * inner;
-        const y1 = roar.y + 18 + Math.sin(a) * inner * 0.46;
-        const x2 = roar.x + Math.cos(a) * outer;
-        const y2 = roar.y + 18 + Math.sin(a) * outer * 0.46;
-        g.fillStyle(SOLAR_PALETTE[2 + (i % 3)], fade * 0.68);
-        pxLine(g, x1, y1, x2, y2);
+
+      // Mane licks: solid flame wedges thrown outward through the wave front,
+      // not a fan of hairlines.
+      for (let i = 0; i < 14; i++) {
+        const a = (Math.PI * 2 * i) / 14 + roar.phase * 0.16 + p * 0.4;
+        const inner = Math.max(10, wave - 22 - (i % 3) * 6);
+        solidWedge(g, roar.x + Math.cos(a) * inner, gy + Math.sin(a) * inner * GROUND_SQUASH, {
+          palette: pal, tone: 1 + (i % 3), angle: a,
+          r0: 0, r1: 26 + (i % 4) * 11, w0: P * 4, w1: P,
+          alpha: fade * 0.7, squash: GROUND_SQUASH,
+          taper: 1.5, seed: i * 3,
+        });
+      }
+      // Stone split by the shout, revealed with the wave.
+      for (let i = 0; i < 8; i++) {
+        const a = roar.phase * 0.2 + (i / 8) * Math.PI * 2;
+        groundCrack(g, roar.x + Math.cos(a) * 12, gy + Math.sin(a) * 12 * GROUND_SQUASH, {
+          palette: pal, tone: 5, angle: a, length: roar.radius * (0.5 + (i % 3) * 0.13),
+          alpha: 0.6 * fade, reveal: Math.min(1, p * 2.1), seed: i * 5, branches: 2, width: P * 2,
+        });
+      }
+      for (let i = 0; i < 6; i++) {
+        const a = roar.phase + (i / 6) * Math.PI * 2;
+        dustPuff(g, roar.x + Math.cos(a) * wave * 0.86, gy + Math.sin(a) * wave * 0.86 * GROUND_SQUASH, {
+          palette: pal, tone: 4, size: 15 + p * 16, alpha: fade * 0.34,
+          lumps: 3, seed: i * 4 + 3, squash: 0.55,
+        });
       }
 
-      // The solar lion appears only while the wave is young, then dissolves
-      // into sparks so it never obscures combat after the control has landed.
-      const faceFade = Math.sin(Math.min(1, p * 2.4) * Math.PI) * fade;
+      // ── the lion, roaring out of the caster ──────────────────────────────
+      // It resolves in a couple of frames, rides up over the monk as the wave
+      // travels, and burns out with it.
+      const faceFade = fade * Math.min(1, p / 0.09);
       if (faceFade > 0.02) {
         const cx = roar.x;
-        const cy = roar.y - 34 - p * 10;
-        const mane = 25 + p * 11;
-        for (let i = 0; i < 14; i++) {
-          const a = (Math.PI * 2 * i) / 14 + roar.phase * 0.08;
-          const mx = cx + Math.cos(a) * mane;
-          const my = cy + Math.sin(a) * mane * 0.82;
-          air.fillStyle(SOLAR_PALETTE[2 + (i % 3)], faceFade * 0.7);
-          pxStar(air, mx, my, P * (i % 3 === 0 ? 2 : 1));
+        const cy = roar.y - 48 - p * 34;
+        const size = 74 + p * 36;
+        // A dark backing disc: without it the head sits on the monk's bright
+        // armour and the two silhouettes merge into one orange mass.
+        air.fillStyle(shade(pal, 6), faceFade * 0.7);
+        pxDisc(air, snap(cx), snap(cy), snap(size * 0.5), snap(size * 0.44));
+        lionMaw(air, cx, cy, {
+          palette: pal, tone: 1, size, alpha: faceFade,
+          open: 0.3 + Math.min(1, p * 3.4) * 0.7,
+          maneSpin: roar.phase + p * 2.2, squash: 0.95,
+        });
+        // Flame streaming out of the open jaw, and the blast it pushes ahead.
+        for (let i = 0; i < 4; i++) {
+          const spread = (i - 1.5) * 0.52;
+          flameTongue(air, cx + spread * 9, cy + size * 0.3, {
+            palette: pal, tone: 2 + (i % 2), height: 22 + p * 44,
+            width: 10 + (i % 2) * 6, angle: Math.PI / 2 + spread * 0.42,
+            alpha: faceFade * 0.72, sway: 11, grow: 1, seed: roar.phase + i * 2.1,
+          });
         }
-        air.fillStyle(SOLAR_PALETTE[3], faceFade * 0.82);
-        pxDisc(air, cx, cy, 18, 16, { every: 2 });
-        air.fillStyle(SOLAR_PALETTE[1], faceFade * 0.96);
-        pxDisc(air, cx, cy + 4, 11, 9, { every: 2 });
-        air.fillStyle(SOLAR_PALETTE[6], faceFade);
-        pxDisc(air, cx - 7, cy - 3, 3, 3);
-        pxDisc(air, cx + 7, cy - 3, 3, 3);
-        pxLine(air, cx - 3, cy + 7, cx + 3, cy + 7);
+        for (let s = 0; s < 2; s++) {
+          solidArcBand(air, cx, cy + size * 0.24, {
+            palette: pal, tone: s ? 3 : 0,
+            from: Math.PI * (0.1 + s * 0.07), to: Math.PI * (0.9 - s * 0.07),
+            r: size * 0.6 + p * 78 + s * 16, thickness: P * (3 - s),
+            alpha: faceFade * (0.72 - s * 0.3), squash: 0.72, seed: s * 9,
+          });
+        }
+        // Embers blown off the mane.
+        for (let i = 0; i < 9; i++) {
+          const a = roar.phase * 1.3 + i * 0.79;
+          const d = size * 0.55 + p * 74 + (i % 3) * 10;
+          debrisChunk(air, snap(cx + Math.cos(a) * d), snap(cy + Math.sin(a) * d * 0.7), {
+            palette: pal, tone: 1 + (i % 3), size: 4 + (i % 2) * 3,
+            alpha: faceFade * 0.85, seed: i * 6, spin: i,
+          });
+        }
       }
 
       if (p < 1) continue;
@@ -2917,7 +3808,7 @@ export default class SkillSystem {
     this.scene.fx.screenFlash(SOLAR_PALETTE[3], 0.34, 220);
     this.scene.fx.ring(hero.x, hero.y - 8, 126, SOLAR_PALETTE[3], 560, 4);
     this.scene.fx.skillBurst(hero.x, hero.y - hero.spriteHeight * 0.48, SOLAR_PALETTE[1], 'explosion');
-    this.scene.fx.popText(hero.x, hero.y - hero.spriteHeight - 12, 'TRANSFORMING', SOLAR_PALETTE[1]);
+    this.scene.fx.popText(hero.x, hero.y - hero.spriteHeight - 70, 'TRANSFORMING', SOLAR_PALETTE[1]);
   }
 
   #tickSolarFuries(dt) {
@@ -3007,7 +3898,7 @@ export default class SkillSystem {
     this.scene.fx.screenFlash(SOLAR_PALETTE[1], 0.42, 220);
     this.scene.fx.skillBurst(hero.x, hero.y - hero.spriteHeight * 0.5, SOLAR_PALETTE[1], 'explosion');
     this.scene.fx.ring(hero.x, hero.y - 8, 138, SOLAR_PALETTE[2], 520, 5);
-    this.scene.fx.popText(hero.x, hero.y - hero.spriteHeight - 12, 'LION FORM', SOLAR_PALETTE[1]);
+    this.scene.fx.popText(hero.x, hero.y - hero.spriteHeight - 70, 'LION FORM', SOLAR_PALETTE[1]);
   }
 
   #tickSolarRevertSprite(fury, p) {
@@ -3026,11 +3917,18 @@ export default class SkillSystem {
     );
   }
 
+  /**
+   * The morph, and — replayed backwards with `p` running 1 → 0 — the revert.
+   * A summoning seal burns into the floor, the Monk is swallowed by a fire
+   * sphere with a real corona, and in the second half a lion's head resolves
+   * out of it. Everything is driven by `p` alone so the reverse plays clean.
+   */
   #drawSolarTransformation(fury, p) {
     const { hero } = fury;
     const g = fury.gfx;
     const back = fury.gfxBack;
     const air = fury.gfxAir;
+    const pal = SOLAR_PALETTE;
     const x = snap(hero.x);
     const y = snap(hero.y);
     const cy = snap(y - hero.spriteHeight * 0.48);
@@ -3040,80 +3938,103 @@ export default class SkillSystem {
     back.clear();
     air.clear();
 
-    // Expanding solar seal under the body, matching the orb/ring progression in
-    // the reference before it condenses into the lion silhouette.
-    g.fillStyle(SOLAR_PALETTE[5], 0.18 + p * 0.18);
-    pxDisc(g, x, y + 2, 34 + p * 42, (34 + p * 42) * GROUND_SQUASH, { every: 3 });
-    g.fillStyle(SOLAR_PALETTE[2], 0.62 + pulse * 0.18);
-    pxGroundRing(g, x, y + 2, 38 + p * 48, {
-      dash: 7, gap: 3, rot: Math.floor(fury.age * 24),
-    });
-    g.fillStyle(SOLAR_PALETTE[0], 0.48);
-    pxGroundRing(g, x, y + 2, 24 + p * 31, {
-      dash: 2, gap: 2, rot: -Math.floor(fury.age * 31),
-    });
-
-    // Four hard colour bands create a pixel-art fire sphere rather than a flat
-    // orange tint. The white core peaks just before the beast sprite appears.
-    back.fillStyle(SOLAR_PALETTE[6], 0.3 + pulse * 0.08);
-    pxDisc(back, x, cy, orbR, orbR, { every: 3 });
-    back.fillStyle(SOLAR_PALETTE[4], 0.5 + pulse * 0.12);
-    pxDisc(back, x, cy, orbR * 0.78, orbR * 0.78, { every: 2 });
-    back.fillStyle(SOLAR_PALETTE[2], 0.68 + pulse * 0.14);
-    pxDisc(back, x, cy, orbR * 0.54, orbR * 0.54);
-    back.fillStyle(SOLAR_PALETTE[0], 0.88);
-    pxStar(back, x, cy, P * (4 + Math.round((1 - Math.abs(p - 0.52)) * 5)));
-
-    for (let ring = 0; ring < 3; ring++) {
-      const rr = orbR * (0.72 + ring * 0.2);
-      air.fillStyle(SOLAR_PALETTE[ring], 0.62 - ring * 0.12);
-      pxArc(air, x, cy, rr, rr * (0.62 + ring * 0.08), {
-        dash: 8 - ring * 2,
-        gap: 3,
-        rot: (ring % 2 ? -1 : 1) * fury.age * (8 + ring * 3),
+    // ── the seal ─────────────────────────────────────────────────────────
+    const sealR = 38 + p * 48;
+    g.fillStyle(shade(pal, 5), 0.16 + p * 0.2);
+    pxDisc(g, x, y + 2, sealR * 0.92, sealR * 0.92 * GROUND_SQUASH, { every: 3 });
+    g.fillStyle(shade(pal, 2), 0.24 + pulse * 0.16);
+    pxDisc(g, x, y + 2, sealR * 0.3, sealR * 0.3 * GROUND_SQUASH, { every: 2 });
+    for (let ring = 0; ring < 2; ring++) {
+      groundBand(g, x, y + 2, sealR * (1 - ring * 0.36), {
+        palette: pal, tone: ring ? 3 : 1, thickness: P * (3 - ring),
+        alpha: 0.7 + pulse * 0.2, bite: 1.2 + ring * 0.6,
+        seed: ring * 5 + 2, glint: ring === 0,
+      });
+    }
+    // Eight glyphs turning on the outer band: this is a summoning, so it is
+    // written on the floor rather than just glowing.
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + fury.age * 0.5;
+      runeGlyph(g, snap(x + Math.cos(a) * sealR * 0.82),
+        snap(y + 2 + Math.sin(a) * sealR * 0.82 * GROUND_SQUASH), {
+          palette: pal, tone: 1 + (i % 3), size: 9 + (i % 2) * 3,
+          alpha: (0.5 + pulse * 0.4) * Math.min(1, p * 2), variant: i,
+        });
+    }
+    for (let i = 0; i < 6; i++) {
+      const a = fury.phase * 0.4 + (i / 6) * Math.PI * 2;
+      groundCrack(g, snap(x + Math.cos(a) * 14), snap(y + 2 + Math.sin(a) * 14 * GROUND_SQUASH), {
+        palette: pal, tone: 5, angle: a, length: sealR * (0.7 + (i % 3) * 0.16),
+        alpha: 0.55 * p, reveal: Math.min(1, p * 1.6), seed: i * 4, branches: 2, width: P * 2,
       });
     }
 
-    // The lion face resolves out of the sphere in the second half: mane rays,
-    // ears, blazing eyes, muzzle and an open jaw are all drawn explicitly.
+    // ── the fire sphere, behind the fading body ──────────────────────────
+    // Its bright core is consumed as the beast resolves, so the two never
+    // compete for the same pixels.
     const lionP = Phaser.Math.Clamp((p - 0.42) / 0.58, 0, 1);
-    if (lionP > 0) {
-      const faceX = x + hero.facing * 5;
-      const maneR = 30 + lionP * 18;
-      for (let i = 0; i < 20; i++) {
-        const a = fury.phase + (i / 20) * Math.PI * 2;
-        air.fillStyle(SOLAR_PALETTE[2 + (i % 4)], lionP * (0.4 + (i % 3) * 0.11));
-        pxLine(air,
-          faceX + Math.cos(a) * maneR * 0.68, cy + Math.sin(a) * maneR * 0.68,
-          faceX + Math.cos(a) * maneR * (0.94 + (i % 3) * 0.1),
-          cy + Math.sin(a) * maneR * (0.94 + (i % 3) * 0.1));
-      }
-      air.fillStyle(SOLAR_PALETTE[3], 0.72 * lionP);
-      pxLine(air, faceX - 20, cy - 16, faceX - 10, cy - 30);
-      pxLine(air, faceX + 20, cy - 16, faceX + 10, cy - 30);
-      air.fillStyle(SOLAR_PALETTE[0], 0.95 * lionP);
-      air.fillRect(faceX - 13, cy - 6, P * 3, P * 2);
-      air.fillRect(faceX + 7, cy - 6, P * 3, P * 2);
-      air.fillStyle(SOLAR_PALETTE[1], 0.8 * lionP);
-      pxDisc(air, faceX + hero.facing * 7, cy + 8, 13, 8);
-      air.fillStyle(SOLAR_PALETTE[6], 0.9 * lionP);
-      air.fillRect(faceX + hero.facing * 5 - P, cy + 5, P * 3, P * 3);
-      pxLine(air, faceX + hero.facing * 7, cy + 13,
-        faceX + hero.facing * 17, cy + 19);
+    const core = 1 - lionP * 0.72;
+    back.fillStyle(shade(pal, 6), 0.32 + pulse * 0.08);
+    pxDisc(back, x, cy, orbR, orbR, { every: 3 });
+    back.fillStyle(shade(pal, 4), (0.52 + pulse * 0.12) * (1 - lionP * 0.4));
+    pxDisc(back, x, cy, orbR * 0.78, orbR * 0.78, { every: 2 });
+    back.fillStyle(shade(pal, 2), (0.7 + pulse * 0.14) * core);
+    pxDisc(back, x, cy, orbR * 0.54, orbR * 0.54);
+    back.fillStyle(shade(pal, 0), 0.9 * core);
+    pxDisc(back, x, cy, orbR * 0.2, orbR * 0.2);
+    // A corona of real flame, not a ring of dots.
+    for (let i = 0; i < 12; i++) {
+      const a = fury.phase + (i / 12) * Math.PI * 2 + fury.age * 0.8;
+      flameTongue(back, snap(x + Math.cos(a) * orbR * 0.8), snap(cy + Math.sin(a) * orbR * 0.8), {
+        palette: pal, tone: 2 + (i % 3),
+        height: orbR * (0.5 + (i % 3) * 0.16), width: 9 + (i % 2) * 5,
+        angle: a - Math.PI / 2, alpha: 0.62 + pulse * 0.2,
+        sway: 9, grow: Math.min(1, p * 1.8), seed: i * 2.4 + fury.age,
+      });
+    }
+    for (let s = 0; s < 3; s++) {
+      solidArcBand(air, x, cy, {
+        palette: pal, tone: s, from: fury.age * (s % 2 ? -2.6 : 2.2) + s * 1.4,
+        to: fury.age * (s % 2 ? -2.6 : 2.2) + s * 1.4 + Math.PI * (1.05 + s * 0.2),
+        r: orbR * (0.82 + s * 0.22), thickness: P * (3 - s),
+        alpha: 0.66 - s * 0.16, squash: 0.6 + s * 0.09,
+        taperEnds: 0.55, glint: s === 0, seed: s * 6,
+      });
     }
 
-    for (let i = 0; i < 36; i++) {
+    // ── the beast resolving out of the sphere ────────────────────────────
+    if (lionP > 0) {
+      const faceX = snap(x + hero.facing * 4);
+      const size = 52 + lionP * 34;
+      // A shadow the head sits in, so it silhouettes against the fire behind.
+      air.fillStyle(shade(pal, 6), lionP * 0.8);
+      pxDisc(air, faceX, cy, snap(size * 0.5), snap(size * 0.46));
+      lionMaw(air, faceX, cy, {
+        palette: pal, tone: 1, size, alpha: 0.55 + lionP * 0.45,
+        open: 0.25 + lionP * 0.75, maneSpin: fury.phase + fury.age * 1.4, squash: 0.94,
+      });
+    }
+
+    // Sparks torn off the sphere and dragged upward.
+    for (let i = 0; i < 14; i++) {
       const a = fury.phase + i * 2.17 + fury.age * (2 + (i % 4));
-      const r = orbR * (0.5 + (i % 7) * 0.13);
-      const mx = snap(x + Math.cos(a) * r);
-      const my = snap(cy + Math.sin(a) * r - (i % 5) * p * 3);
-      air.fillStyle(SOLAR_PALETTE[1 + (i % 5)], 0.34 + (i % 4) * 0.12);
-      air.fillRect(mx, my, i % 9 === 0 ? P * 2 : P, i % 6 === 0 ? P * 2 : P);
+      const r = orbR * (0.55 + (i % 5) * 0.16);
+      debrisChunk(air, snap(x + Math.cos(a) * r), snap(cy + Math.sin(a) * r - (i % 5) * p * 5), {
+        palette: pal, tone: 1 + (i % 3), size: 3 + (i % 3) * 2,
+        alpha: 0.4 + (i % 4) * 0.15, seed: i * 3, spin: i,
+      });
     }
   }
 
+  /**
+   * The stance itself, held for seven seconds while the beast fights: a solar
+   * seal that turns under its feet, a wedge mane burning behind the body, and
+   * heat rising off it. Kept deliberately lean — it redraws every frame for
+   * the whole duration, alongside live combat.
+   */
   #drawSolarFury(fury) {
     const { hero } = fury;
+    const pal = SOLAR_PALETTE;
     const x = snap(hero.x);
     const y = snap(hero.y);
     const h = hero.spriteHeight;
@@ -3128,35 +4049,57 @@ export default class SkillSystem {
     back.clear();
     air.clear();
 
-    g.fillStyle(SOLAR_PALETTE[5], 0.13 + pulse * 0.04);
-    pxDisc(g, x, y + 2, 62, 62 * GROUND_SQUASH, { every: 4 });
-    g.fillStyle(SOLAR_PALETTE[3], 0.54 + pulse * 0.16);
-    pxGroundRing(g, x, y + 2, 62, { dash: 6, gap: 3, rot: Math.floor(fury.age * 14) });
-    g.fillStyle(SOLAR_PALETTE[1], 0.4);
-    pxGroundRing(g, x, y + 2, 43, { dash: 2, gap: 3, rot: -Math.floor(fury.age * 19) });
-
-    // Sun rays and a rough mane stay behind the transformed body.
-    const maneR = (31 + pulse * 5) * open;
-    for (let i = 0; i < 18; i++) {
-      const a = fury.phase + (i / 18) * Math.PI * 2;
-      const inner = maneR * 0.72;
-      const outer = maneR * (1.1 + (i % 3) * 0.12);
-      back.fillStyle(SOLAR_PALETTE[2 + (i % 4)], 0.34 + pulse * 0.16);
-      pxLine(back,
-        cx + Math.cos(a) * inner, cy + Math.sin(a) * inner,
-        cx + Math.cos(a) * outer, cy + Math.sin(a) * outer);
+    g.fillStyle(shade(pal, 5), 0.14 + pulse * 0.05);
+    pxDisc(g, x, y + 2, 60, 60 * GROUND_SQUASH, { every: 4 });
+    for (let ring = 0; ring < 2; ring++) {
+      groundBand(g, x, y + 2, ring ? 42 : 62, {
+        palette: pal, tone: ring ? 1 : 3, thickness: P * (2 - ring * 0.5),
+        alpha: (ring ? 0.5 : 0.72) + pulse * 0.16, bite: ring ? 1.6 : 1,
+        seed: ring * 9 + Math.floor(fury.age * 3), glint: ring === 0,
+      });
     }
-    back.fillStyle(SOLAR_PALETTE[4], 0.24 + pulse * 0.08);
-    pxDisc(back, cx, cy, maneR, maneR, { every: 3 });
 
-    // Orbiting flame motes keep the entire body energized, not only its head.
-    for (let i = 0; i < 24; i++) {
-      const ph = (fury.age * (0.42 + (i % 4) * 0.04) + i / 24) % 1;
+    // The mane: solid wedges behind the body, sized to reach past the beast's
+    // silhouette so the burning crown is visible around it rather than hidden.
+    const maneR = (47 + pulse * 6) * open;
+    for (let i = 0; i < 16; i++) {
+      const a = fury.phase + (i / 16) * Math.PI * 2 + fury.age * 0.35;
+      solidWedge(back, cx, cy, {
+        palette: pal, tone: 2 + (i % 3), angle: a,
+        r0: maneR * 0.5, r1: maneR * (1.06 + (i % 3) * 0.14),
+        w0: maneR * 0.26, w1: P, alpha: (0.6 + pulse * 0.22) * open,
+        taper: 1.4, notch: true, glint: i % 4 === 0, seed: i * 3,
+      });
+    }
+    back.fillStyle(shade(pal, 5), 0.26 + pulse * 0.08);
+    pxDisc(back, cx, cy, maneR * 0.72, maneR * 0.72, { every: 3 });
+    // Two counter-turning bands of solar wind framing the body.
+    for (let s = 0; s < 2; s++) {
+      const spin = fury.age * (s ? -1.5 : 1.9) + s * 2.2;
+      solidArcBand(back, cx, snap(cy + h * 0.16), {
+        palette: pal, tone: s ? 3 : 1, from: spin, to: spin + Math.PI * 1.25,
+        r: (52 + s * 13) * open, thickness: P * (2.5 - s * 0.5),
+        alpha: (0.62 - s * 0.18) * open, squash: 0.62,
+        taperEnds: 0.5, glint: s === 0, seed: s * 7,
+      });
+    }
+
+    // Heat coming off the body, and embers riding it up.
+    for (let i = 0; i < 3; i++) {
+      const ph = (fury.age * 0.7 + i / 3) % 1;
+      flameTongue(air, snap(x + Math.sin(fury.age * 2.2 + i * 2.1) * 13), snap(y - 6 - ph * h * 0.5), {
+        palette: pal, tone: 2 + (i % 2), height: 20 + (1 - ph) * 20,
+        width: 9 + (i % 2) * 5, angle: -Math.PI / 2,
+        alpha: (1 - ph) * 0.6 * open, sway: 8, grow: 1, seed: fury.age + i * 3.1,
+      });
+    }
+    for (let i = 0; i < 10; i++) {
+      const ph = (fury.age * (0.42 + (i % 4) * 0.04) + i / 10) % 1;
       const a = fury.phase + i * 2.31 + fury.age * 0.7;
-      const mx = snap(x + Math.cos(a) * (20 + (i % 5) * 7));
-      const my = snap(y - 4 - ph * (h + 32));
-      air.fillStyle(SOLAR_PALETTE[1 + (i % 5)], (1 - ph) * (0.38 + (i % 4) * 0.12));
-      air.fillRect(mx, my, i % 8 === 0 ? P * 2 : P, i % 5 === 0 ? P * 2 : P);
+      debrisChunk(air, snap(x + Math.cos(a) * (20 + (i % 5) * 8)), snap(y - 4 - ph * (h + 30)), {
+        palette: pal, tone: 1 + (i % 3), size: 3 + (i % 2) * 3,
+        alpha: (1 - ph) * (0.7 + (i % 3) * 0.12), seed: i * 5, spin: i,
+      });
     }
   }
 
