@@ -64,12 +64,24 @@ export default class Hero extends Entity {
     this.homeX = x;
     this.homeY = y;
 
+    /**
+     * Ascent mode sets this: the hero is being driven by PlayerController rather
+     * than HeroAI. It changes nothing about combat — only the on-floor ring, which
+     * has to read as "your reach" instead of "the boss's threat".
+     */
+    this.playerControlled = false;
+
     this.aggroGfx = scene.add.graphics().setDepth(DEPTH.aggro);
     this.drawAggro();
   }
 
   get isTelegraphing() {
     return this.state === HERO_STATE.TELEGRAPH;
+  }
+
+  /** True while Solar Lion Fury's beast form is actually up. */
+  get solarActive() {
+    return this.solarTransformed && this.scene.clock < this.solarFuryUntil;
   }
 
   get dodgeChance() {
@@ -79,10 +91,7 @@ export default class Hero extends Entity {
   }
 
   get speed() {
-    const solar = this.solarTransformed && this.scene.clock < this.solarFuryUntil
-      ? this.solarMoveSpeedMult
-      : 1;
-    return super.speed * solar;
+    return super.speed * (this.solarActive ? this.solarMoveSpeedMult : 1);
   }
 
   /** Swap between the humanoid and beast animation sets without replacing the entity. */
@@ -139,6 +148,10 @@ export default class Hero extends Entity {
     const g = this.aggroGfx;
     g.clear();
     if (!this.alive) return;
+    if (this.playerControlled) {
+      this.#drawPlayerRing(g);
+      return;
+    }
 
     const cy = this.y - 4;
     const danger = this.isTelegraphing || this.state === HERO_STATE.CAST;
@@ -161,6 +174,40 @@ export default class Hero extends Entity {
     // inner basic-attack range
     g.lineStyle(1, COLORS.aggro, 0.28);
     g.strokeCircle(this.x, cy, this.basicRange);
+  }
+
+  /**
+   * Ascent mode: the ring is information *for* the player rather than a warning
+   * *about* them, so it drops the threatening pink flood-fill and shows only the
+   * two things the hands need — how far the swing reaches, and which way it goes.
+   * Cold green is the player's colour throughout the UI; the pink aggro fill is
+   * reserved for something hunting you.
+   */
+  #drawPlayerRing(g) {
+    const cy = this.y - 4;
+    const busy = this.isTelegraphing || this.state === HERO_STATE.CAST;
+    const col = busy ? COLORS.gridHover : COLORS.gridOk;
+
+    const steps = 44;
+    g.lineStyle(1, col, busy ? 0.7 : 0.42);
+    for (let i = 0; i < steps; i += 2) {
+      const a0 = (i / steps) * Math.PI * 2;
+      const a1 = ((i + 1) / steps) * Math.PI * 2;
+      g.beginPath();
+      g.moveTo(this.x + Math.cos(a0) * this.basicRange, cy + Math.sin(a0) * this.basicRange * 0.62);
+      g.lineTo(this.x + Math.cos(a1) * this.basicRange, cy + Math.sin(a1) * this.basicRange * 0.62);
+      g.strokePath();
+    }
+
+    // facing chevron: a melee cone points where the next cast will go
+    const dir = this.facing >= 0 ? 1 : -1;
+    const tipX = this.x + dir * (this.basicRange * 0.34 + 16);
+    g.lineStyle(2, col, 0.85);
+    g.beginPath();
+    g.moveTo(tipX - dir * 9, cy - 7);
+    g.lineTo(tipX, cy);
+    g.lineTo(tipX - dir * 9, cy + 7);
+    g.strokePath();
   }
 
   update(dt) {

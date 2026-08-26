@@ -6,12 +6,14 @@
  * TelegraphSystem, and presentation from UISystem/FxSystem.
  */
 
-import { ARENA, MANA } from '../config.js';
+import { ARENA, MANA, MODE } from '../config.js';
 import ArenaScenery from '../art/ArenaScenery.js';
 import Hero from '../entities/Hero.js';
 import Monster from '../entities/Monster.js';
 import HeroAI from '../ai/HeroAI.js';
 import MonsterAI from '../ai/MonsterAI.js';
+import PlayerController from '../ai/PlayerController.js';
+import AscentSystem from '../systems/AscentSystem.js';
 import BattleSystem from '../systems/BattleSystem.js';
 import CombatSystem from '../systems/CombatSystem.js';
 import FxSystem from '../systems/FxSystem.js';
@@ -26,6 +28,8 @@ import UISystem from '../ui/UISystem.js';
 import Economy from '../economy/Economy.js';
 import { HEROES, HERO_STATE } from '../data/heroes.js';
 import { MONSTERS, MONSTER_BY_ID, ROLE_LABEL } from '../data/monsters.js';
+import { FLOORS } from '../data/floors.js';
+import { ASCENT_FLOORS, ascentFloorSize } from '../data/ascentFloors.js';
 import { themeForFloor } from '../data/arenaThemes.js';
 
 const MAX_DT = 1 / 20; // clamp so a tab-out can never teleport the simulation
@@ -52,10 +56,12 @@ export default class GameScene extends Phaser.Scene {
     this.monsters = [];
     this.hero = null;
     this.needsMainMenu = true;
-    this.labMode = false;
+    /** Which loop is live. See config.MODE — nothing keeps a second copy. */
+    this.mode = MODE.DEFENSE;
     this.labKind = 'hero';
     this.labSelectedHeroId = 'goldenKnight';
     this.labSelectedMonsterId = 'golem';
+    this.ascentHeroId = 'goldenKnight';
 
     this.arenaBounds = {
       x: ARENA.x, y: ARENA.y, right: ARENA.right, bottom: ARENA.bottom,
@@ -74,14 +80,18 @@ export default class GameScene extends Phaser.Scene {
     this.skills = new SkillSystem(this);
     this.ultimate = new UltimateSystem(this);
     this.battle = new BattleSystem(this);
+    this.ascent = new AscentSystem(this);
     this.tower = new TowerSystem(this);
     this.summon = new SummonSystem(this);
     this.monsterAI = new MonsterAI(this);
     this.heroAI = new HeroAI(this);
+    this.player = new PlayerController(this);
     this.ui = new UISystem(this);
 
     this.events.on('battle-victory', () => this.#onVictory());
     this.events.on('battle-defeat', () => this.#onDefeat());
+    this.events.on('ascent-cleared', () => this.#onAscentCleared());
+    this.events.on('ascent-defeat', () => this.#onAscentDefeat());
     this.events.on('selection-changed', (id) => {
       const def = MONSTER_BY_ID[id];
       if (def) this.ui.flashHint(`${def.name} selected — ${def.cost} mana`);
@@ -90,14 +100,8 @@ export default class GameScene extends Phaser.Scene {
     this.startFloor();
   }
 
-  // ═══ floor lifecycle ═════════════════════════════════════════════════════
-  startFloor() {
-    const cfg = this.tower.config;
-
-    // dress the room before anything is placed in it
-    this.arena.build(themeForFloor(cfg.floor));
-
-    // tear down anything left from the previous attempt
+  /** Everything a fresh attempt has to forget, in either mode. */
+  #clearField() {
     for (const m of this.monsters) m.destroy();
     this.monsters = [];
     this.hero?.destroy();
@@ -108,6 +112,21 @@ export default class GameScene extends Phaser.Scene {
     this.ultimate.reset();
     this.fx.resetDecals(); // the previous attempt's scorch marks go with it
     document.body.classList.remove('danger');
+  }
+
+  // ═══ floor lifecycle ═════════════════════════════════════════════════════
+  startFloor() {
+    this.mode = MODE.DEFENSE;
+    if (this.tower.floors !== FLOORS) this.tower.setTrack(FLOORS);
+    this.ui.setMode(MODE.DEFENSE);
+    this.player.setEnabled(false);
+    const cfg = this.tower.config;
+
+    // dress the room before anything is placed in it
+    this.arena.build(themeForFloor(cfg.floor));
+
+    // tear down anything left from the previous attempt
+    this.#clearField();
 
     this.mana.configure(cfg);
     this.summon.reset();
@@ -129,7 +148,7 @@ export default class GameScene extends Phaser.Scene {
       this.ui.showMainMenu(() => {
         this.ui.hideMainMenu();
         this.#showRosterSelection(cfg, def);
-      }, () => this.#enterSkillLab());
+      }, () => this.#enterSkillLab(), () => this.#enterAscent());
     } else {
       this.#showRosterSelection(cfg, def);
     }
@@ -176,7 +195,9 @@ export default class GameScene extends Phaser.Scene {
   #enterSkillLab() {
     this.ui.hideMainMenu();
     this.ui.hideBanner();
-    this.labMode = true;
+    this.mode = MODE.LAB;
+    this.ui.setMode(MODE.LAB);
+    this.player.setEnabled(false);
     this.battle.toIntro();
     this.arena.build(themeForFloor(4));
     this.ui.showSkillLab({
@@ -401,11 +422,147 @@ export default class GameScene extends Phaser.Scene {
   }
 
   #exitSkillLab() {
-    this.labMode = false;
     this.ui.hideSkillLab();
     this.#clearLabActors();
     this.needsMainMenu = true;
     this.startFloor();
+  }
+
+  // ═══ ascent mode ═════════════════════════════════════════════════════════
+  /**
+   * Menu → hero draft. Swapping the floor track resets the run to floor 1 with a
+   * full set of attempts, so this is the only place it may be called.
+   */
+  #enterAscent() {
+    this.ui.hideMainMenu();
+    this.ui.hideBanner();
+    this.mode = MODE.ASCENT;
+    this.tower.setTrack(ASCENT_FLOORS);
+    this.ui.setMode(MODE.ASCENT);
+    this.player.setEnabled(false);
+    this.battle.toIntro();
+    this.#clearField();
+
+    /** Health carries between floors; clearing one gives a fraction of it back. */
+    this.ascentHpPct = 1;
+
+    const cfg = this.tower.config;
+    this.arena.build(themeForFloor(cfg.floor));
+    this.ui.setFloor(cfg);
+    this.ui.showHeroSelection(Object.values(HEROES), (id) => {
+      this.ascentHeroId = id;
+      this.ui.hideBanner();
+      this.startAscentFloor();
+    });
+  }
+
+  startAscentFloor() {
+    this.mode = MODE.ASCENT;
+    this.ui.setMode(MODE.ASCENT);
+    this.player.setEnabled(false); // the intro banner hands control over
+    const cfg = this.tower.config;
+
+    this.arena.build(themeForFloor(cfg.floor));
+    this.#clearField();
+    this.ascent.configure(cfg);
+    this.ui.setFloor(cfg);
+
+    const def = HEROES[this.ascentHeroId] ?? HEROES.goldenKnight;
+    this.hero = new Hero(this, def, cfg, ARENA.cx, ARENA.bottom - 74);
+    this.hero.playerControlled = true;
+    // HeroAI never ticks in this mode, but the roll timer is seeded in the Hero
+    // constructor — left alone it would be a loaded gun aimed at the player's kit.
+    this.hero.nextSkillAt = Infinity;
+    this.hero.hp = Math.max(1, Math.round(this.hero.maxHp * (this.ascentHpPct ?? 1)));
+    this.hero.drawAggro(); // redraw: the ring is the player's reach, not a threat
+    this.ui.setHero(def);
+    this.ui.buildAscentActions(def, (id) => this.player.request(id));
+    this.ui.setDefaultHint('WASD move · mouse aim · click attack · 1–3 skills · 4 ultimate.');
+
+    this.#showAscentIntro(cfg, def);
+  }
+
+  #showAscentIntro(cfg, def) {
+    const bodies = ascentFloorSize(cfg);
+    const elites = cfg.waves.filter((w) => w.elite).length;
+    const heal = Math.round((cfg.healOnClear ?? 0) * 100);
+
+    this.ui.showBanner({
+      title: `FLOOR ${cfg.floor} — ${cfg.title.toUpperCase()}`,
+      sub: `<em>${def.name}</em> — ${cfg.brief}<br>
+            Garrison: <b>${bodies}</b> monsters over <b>${cfg.waves.length}</b> waves${elites ? ` · <b>${elites}</b> elite` : ''}<br>
+            Kit: ${def.basicName ?? 'Attack'} · ${def.skills.map((s) => s.name).join(' · ')} · <em>${def.ultimate.name}</em><br><br>
+            <span class="dim">Your wind-ups are shortened but they still telegraph — a cast is a
+            commitment. Damage carries between floors; clearing this one restores ${heal}% of your health.</span>`,
+      button: 'CLIMB',
+      onAction: () => {
+        this.audio.unlock();
+        this.ui.hideBanner();
+        this.player.setEnabled(true);
+        this.ascent.begin();
+      },
+    });
+  }
+
+  #onAscentCleared() {
+    const reward = this.tower.clearFloor();
+    const cfg = this.tower.config;
+    const last = this.tower.isFinalFloor;
+    this.player.setEnabled(false);
+
+    const before = this.hero?.hpPct ?? 1;
+    this.ascentHpPct = Math.min(1, before + (cfg.healOnClear ?? 0));
+
+    this.fx.screenFlash(0x8bffd8, 0.3, 240);
+    this.ui.showBanner({
+      title: last ? 'TOWER CONQUERED' : 'FLOOR CLEARED',
+      tone: 'victory',
+      sub: `Monsters put down: <b>${ascentFloorSize(cfg)}</b> · Health left: <b>${Math.round(before * 100)}%</b><br>
+            ${last ? '' : `Recovered to <b>${Math.round(this.ascentHpPct * 100)}%</b> for the next floor<br>`}
+            Reward: <b>${reward.soft}</b> soft${reward.hard ? ` · <b>${reward.hard}</b> hard` : ''}
+            <span class="dim">(banked for the meta layer)</span>`,
+      button: last ? 'NEW RUN' : 'NEXT FLOOR',
+      onAction: () => {
+        this.ui.hideBanner();
+        if (last) {
+          this.tower.resetRun();
+          this.ascentHpPct = 1;
+        } else {
+          this.tower.advance();
+        }
+        this.startAscentFloor();
+      },
+    });
+  }
+
+  #onAscentDefeat() {
+    const lives = this.tower.loseLife();
+    const over = lives <= 0;
+    this.player.setEnabled(false);
+
+    this.fx.screenFlash(0xff3b4e, 0.34, 260);
+    this.ui.showBanner({
+      title: 'YOU FELL',
+      tone: 'defeat',
+      sub: over
+        ? `The tower keeps its floors. <b>Floor ${this.tower.floor}</b> was as high as you got.<br>
+           <span class="dim">Out of attempts.</span>`
+        : `Wave <b>${this.ascent.waveNumber}</b> of ${this.ascent.waveCount} — ${this.ascent.monstersLeft} still standing.<br>
+           Attempts remaining: <b>${lives}</b><br><br>
+           <span class="dim">Retrying restores you to full. Keep moving during recovery, and
+           save the ultimate for the wave that leads with an elite.</span>`,
+      button: over ? 'BACK TO MENU' : 'RETRY FLOOR',
+      onAction: () => {
+        this.ui.hideBanner();
+        if (over) {
+          this.needsMainMenu = true;
+          this.startFloor(); // switches the track back and resets the run
+          return;
+        }
+        this.ascentHpPct = 1;
+        this.startAscentFloor();
+      },
+    });
   }
 
   #onVictory() {
@@ -463,7 +620,7 @@ export default class GameScene extends Phaser.Scene {
     // the room runs on real time: torches keep burning through hitstop
     this.arena.update(realDt);
 
-    if (this.labMode) {
+    if (this.mode === MODE.LAB) {
       this.clock += dt;
       this.telegraph.update(dt);
       this.skills.update(dt);
@@ -472,6 +629,24 @@ export default class GameScene extends Phaser.Scene {
       for (const m of this.monsters) {
         if (m.dashing) this.skills.tickDash(m, dt);
         m.update(dt);
+      }
+    } else if (this.mode === MODE.ASCENT) {
+      if (this.ascent.running) {
+        this.clock += dt;
+
+        // no mana tick and no HeroAI: the resources are cooldowns, and the hero
+        // is driven by the keyboard. Everything else is the defence loop.
+        this.telegraph.update(dt);
+        this.player.update(dt);
+        this.monsterAI.update(dt);
+        this.skills.update(dt);
+        this.combat.update(dt);
+        this.hero?.update(dt);
+        this.ascent.update(dt);
+      } else {
+        this.hero?.syncSprite();
+        this.hero?.drawAggro();
+        for (const m of this.monsters) m.syncSprite();
       }
     } else if (this.battle.running) {
       this.clock += dt;
@@ -492,8 +667,8 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // the sigil turns on real time too — a frozen cursor during hitstop reads
-    // as the game having hung
-    this.summon.update(realDt);
+    // as the game having hung. Ascent has nothing to place, so it has no sigil.
+    if (this.mode !== MODE.ASCENT) this.summon.update(realDt);
     this.ui.update();
 
     this.monsters = this.monsters.filter((m) => !m.destroyed);

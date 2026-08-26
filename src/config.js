@@ -97,6 +97,58 @@ export const MANA = {
   regenPerSec: 1.6,
 };
 
+/**
+ * The three things the game can be doing.
+ *
+ * `defense` is the original loop: you own the tower and spend mana to summon
+ * monsters against an AI-driven boss. `ascent` inverts it — you *are* the hero,
+ * you climb, and the monsters are the opposition. `lab` is the free-cast room.
+ *
+ * Only one is active at a time; GameScene.mode is the single source of truth and
+ * every system that behaves differently reads it rather than keeping its own flag.
+ */
+export const MODE = {
+  DEFENSE: 'defense',
+  ASCENT: 'ascent',
+  LAB: 'lab',
+};
+
+/**
+ * Ascent-mode tuning. Deliberately small: the hero's damage, reach, cooldowns
+ * and telegraphs all still come from data/heroes.js, so a kit that reads well as
+ * a boss reads the same way in the player's hands.
+ */
+export const PLAYER = {
+  /**
+   * A boss telegraph is a warning aimed at the player. In the player's hands the
+   * same wind-up is a commitment cost, and a full 0.7s root feels like lag — so
+   * casts wind up faster while still resolving through the exact same telegraph.
+   */
+  telegraphMult: 0.7,
+  /**
+   * Floor on the shortened wind-up. 0.3s is the game's readability contract —
+   * nothing anywhere resolves damage sooner than that after its tell appears —
+   * so the player's snappier casts bottom out at it rather than through it.
+   */
+  telegraphMin: 0.3,
+  /** Recovery is a real cost, but shuffling out of a crowd stays possible. */
+  recoverMoveMult: 0.42,
+  /** Diagonal input is normalised; this is the straight-line walk speed. */
+  moveMult: 1,
+
+  /** Seconds of quiet between cleared waves. */
+  breatherSeconds: 2.4,
+  /** Monsters walk in one at a time rather than popping in as a block. */
+  spawnStagger: 0.28,
+  /** Beat between the hero dying and the defeat banner. */
+  deathDelay: 1.35,
+
+  /** Each floor's last wave is anchored by one promoted monster. */
+  eliteHpMult: 2.4,
+  eliteAtkMult: 1.35,
+  eliteScale: 1.2,
+};
+
 /** Frame durations for the placeholder animations (spec §5: 4-8 frames). */
 export const ANIM = {
   idleFps: 5,

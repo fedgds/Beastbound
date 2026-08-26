@@ -5,7 +5,7 @@
  * there is deliberately no placement grid, cell count, or snap-to-cell logic.
  */
 
-import { ARENA, COLORS, DEPTH } from '../config.js';
+import { ARENA, COLORS, DEPTH, MODE } from '../config.js';
 import Monster from '../entities/Monster.js';
 import { MONSTER_BY_ID } from '../data/monsters.js';
 import {
@@ -56,6 +56,9 @@ export default class SummonSystem {
   }
 
   #onDown(pointer) {
+    // In Ascent mode a click is the hero's attack, not a placement. BattleSystem
+    // is idle there too, but relying on that would make this a coincidence.
+    if (this.scene.mode === MODE.ASCENT) return;
     if (!this.scene.battle.acceptsInput) return;
     this.trySummon(this.selectedId, { x: pointer.worldX, y: pointer.worldY });
   }

@@ -893,8 +893,8 @@ body.danger #stage::after {
 }
 #main-menu.hidden { display: none; }
 .menu-panel {
-  width: 462px;
-  padding: 28px 46px 24px;
+  width: 562px;
+  padding: 28px 42px 24px;
   border: 2px solid var(--brass-lo);
   background:
     linear-gradient(90deg, #0000 49%, #ffffff08 50%, #0000 51%),
@@ -925,28 +925,39 @@ body.danger #stage::after {
   font-size: 15px;
   line-height: 1.45;
 }
-.menu-actions { display: flex; justify-content: center; gap: 10px; }
+.menu-actions { display: flex; justify-content: center; gap: 9px; }
 #menu-start,
+#menu-ascent,
 #menu-lab {
   pointer-events: auto;
-  padding: 12px 22px 10px;
+  padding: 12px 15px 10px;
   color: #171006;
   font-family: var(--pixel);
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  font-size: 10px;
+  letter-spacing: 0.1em;
   background: linear-gradient(var(--brass-hi), var(--brass) 55%, #8a6d34);
   border: 2px solid #08060d;
   border-bottom-width: 5px;
   cursor: pointer;
+  white-space: nowrap;
+}
+/* Defending is the tower's own act, so it keeps the brass. Climbing is the
+   player stepping into the hero's boots — arcane blue, the player's colour. */
+#menu-ascent {
+  color: #eaf6ff;
+  background: linear-gradient(#3f7fb8, #24507d 55%, #16314d);
+  border-color: #0a1220;
 }
 #menu-lab {
   color: #efe3ff;
   background: linear-gradient(#714493, #41295c 55%, #291b3b);
   border-color: #120b1a;
 }
-#menu-start:hover, #menu-lab:hover { filter: brightness(1.14); transform: translateY(-1px); }
-#menu-start:active, #menu-lab:active { transform: translateY(2px); border-bottom-width: 3px; }
-#menu-start:focus-visible, #menu-lab:focus-visible { outline: 2px solid var(--essence); outline-offset: 3px; }
+#menu-start:hover, #menu-ascent:hover, #menu-lab:hover { filter: brightness(1.14); transform: translateY(-1px); }
+#menu-start:active, #menu-ascent:active, #menu-lab:active { transform: translateY(2px); border-bottom-width: 3px; }
+#menu-start:focus-visible,
+#menu-ascent:focus-visible,
+#menu-lab:focus-visible { outline: 2px solid var(--essence); outline-offset: 3px; }
 .menu-tip {
   margin: 20px 0 0;
   padding-top: 11px;
@@ -961,6 +972,7 @@ body.danger #stage::after {
 /* ── controlled skill testing room ─────────────────────────────────────── */
 body.lab-mode #topbar,
 body.lab-mode #bottombar,
+body.lab-mode #hint,
 body.lab-mode #monster-inspector { display: none; }
 
 #skill-lab {
@@ -1080,6 +1092,213 @@ body.lab-mode #monster-inspector { display: none; }
 .lab-skill-buttons button.ultimate { color: #fff0b0; border-color: #b78a3c; background: linear-gradient(#6a492b, #342019); }
 .lab-skill-buttons button.active-skill { color: #dfffe9; border-color: #4c9368; background: linear-gradient(#294b3a, #17291f); }
 .lab-skill-buttons button.passive { color: #d9c6ff; border-color: #6c56a5; }
+
+/* ── ascent mode: the bottom bar when *you* are the one climbing ──────────────
+   #bottombar is replaced wholesale rather than reskinned. There is no mana, no
+   essence and no roster here — the only resources are cooldowns, so the bar is
+   a rack of abilities with a wave readout bolted to its left end.
+
+   Colour: the player keeps cold arcane and green even though they are now
+   driving the hero, so gold stays the *tower's* read on an intruder. Red,
+   yellow and purple remain telegraph-only. */
+#ascent-bar {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: var(--hud-bottom);
+  padding: 7px 8px 8px;
+  display: grid;
+  grid-template-columns: 178px 1fr;
+  grid-template-rows: 1fr;
+  gap: 4px 10px;
+  background: linear-gradient(#0b091200, #0b0912e0 30%, #0b0912fc);
+}
+#ascent-bar.hidden { display: none; }
+
+/* ---- wave readout: the same carved panel as #resources ---- */
+#ascent-status {
+  padding: 5px 7px 6px;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(#2a2440, var(--rock) 34%, #1b1729);
+  border: 1px solid var(--rock-lo);
+  box-shadow: inset 0 1px 0 var(--rock-hi), inset 0 -1px 0 #0006;
+}
+#ascent-wave {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--mana-hi);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px #4aa8ff55;
+}
+#ascent-wave-pips { margin-top: 1px; }
+#ascent-wave-pips .pip.done { background: var(--essence-lo); }
+#ascent-wave-pips .pip.here {
+  background: var(--essence);
+  box-shadow: inset 0 0 0 1px #0009, 0 0 0 1px var(--essence), 0 0 6px #39d4a088;
+}
+#ascent-left {
+  font-size: 15px;
+  color: var(--essence);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The director's current intent, in one word. It is the only place the mode
+   tells you what is about to happen rather than what is happening. */
+#ascent-phase {
+  margin-top: auto;
+  padding-top: 6px;
+  color: var(--dim);
+  font-family: var(--pixel);
+  font-size: 7px;
+  letter-spacing: 0.16em;
+}
+#ascent-phase.final {
+  color: var(--mana-hi);
+  text-shadow: 0 0 7px #4aa8ff66;
+  animation: pulse 0.8s steps(2) infinite;
+}
+
+/* ---- the ability rack ---- */
+#ascent-actions {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+.act {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 6px 7px 6px;
+  text-align: left;
+  color: var(--faint);
+  font-family: var(--pixel);
+  background: linear-gradient(#241f36, #14111f);
+  border: 1px solid #2a2440;
+  border-bottom-width: 2px;
+  box-shadow: inset 0 1px 0 #ffffff10;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: filter 90ms linear, transform 90ms linear;
+}
+.act:hover { filter: brightness(1.22); transform: translateY(-1px); }
+.act:active { transform: translateY(1px); border-bottom-width: 1px; }
+.act:focus-visible { outline: 1px solid var(--mana-hi); outline-offset: 1px; }
+
+/* The cooldown drains downward — a vertical rack reads as a gauge emptying,
+   where the top bar's chips read left-to-right as a timeline. */
+.act .cd {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 0;
+  background: #2b2340;
+  transition: height 60ms linear;
+}
+.act > span { position: relative; }
+.act-key {
+  align-self: flex-start;
+  margin-bottom: auto;
+  padding: 1px 4px;
+  color: var(--dim);
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  background: #0c0916;
+  box-shadow: 0 0 0 1px #ffffff14;
+}
+.act-name {
+  font-size: 8px;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+}
+.act-meta {
+  color: var(--faint);
+  font-family: var(--read);
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* Tone by ability class, not by power: the basic is stone, skills are the
+   player's green, the ultimate is arcane blue. */
+.act.skill .cd { background: #1d3a30; }
+.act.ult .cd { background: #16304c; }
+.act.armed { color: var(--text); }
+.act.skill.armed {
+  color: #dfffe9;
+  border-color: #387a5c;
+  background: linear-gradient(#28494a, #16281f);
+  text-shadow: 0 0 6px #39d4a055;
+}
+.act.basic.armed {
+  color: var(--mana-hi);
+  border-color: #2f5c86;
+  background: linear-gradient(#20344d, #121a28);
+}
+.act.ult.armed {
+  color: #eaf6ff;
+  border-color: var(--mana);
+  background: linear-gradient(#1d4570, #101c2c);
+  box-shadow: inset 0 1px 0 #ffffff22, 0 0 10px #4aa8ff3d;
+  text-shadow: 0 0 8px #a8dcffaa;
+}
+/* mid-cast: the same white-hot read the top bar's chips use */
+.act.firing {
+  color: #fff;
+  border-color: var(--mana-hi);
+  background: linear-gradient(#2c5a86, #16283c);
+  animation: pulse 0.24s steps(2) infinite;
+}
+/* a once-per-floor ultimate already burned */
+.act.spent {
+  color: #4a4460;
+  border-color: #201b30;
+  background: #100d1a;
+}
+.act.spent .act-name { text-decoration: line-through; }
+
+/* ---- control legend: the keys, stated once, permanently ---- */
+#ascent-help {
+  position: absolute;
+  left: 196px;
+  right: 8px;
+  bottom: calc(var(--hud-bottom) + 5px);
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  padding: 3px 8px;
+  color: var(--faint);
+  font-family: var(--pixel);
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  background: #0b0912b0;
+  border: 1px solid #ffffff10;
+  pointer-events: none;
+}
+#ascent-help b {
+  margin-right: 3px;
+  padding: 1px 3px;
+  color: var(--dim);
+  font-weight: 400;
+  background: #191426;
+  box-shadow: 0 0 0 1px #ffffff14;
+}
+/* the toast stacks above the key legend instead of landing on top of it */
+body.ascent-mode #hint { bottom: calc(var(--hud-bottom) + 26px); }
+
+/* One pick from four: the monster draft's chrome, recoloured. The kit you take
+   is yours for the whole run, so the ultimate is called out in arcane blue
+   rather than the intruder's brass. */
+.hero-pick strong { color: var(--mana-hi); }
+.hero-pick.picked {
+  border-color: var(--mana);
+  background: linear-gradient(#22405f, #121b29);
+  box-shadow: inset 0 0 0 1px #4aa8ff55, 0 0 9px #4aa8ff30;
+}
+.hero-pick.picked b { color: #eaf6ff; }
 
 /* ── reduced motion: keep every state legible, drop the blinking ─────────── */
 @media (prefers-reduced-motion: reduce) {

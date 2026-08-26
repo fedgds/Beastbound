@@ -6,30 +6,42 @@
  * without touching combat code.
  */
 
-import { FLOORS, FLOOR_COUNT, getFloor } from '../data/floors.js';
+import { FLOORS } from '../data/floors.js';
 
 export default class TowerSystem {
   constructor(scene) {
     this.scene = scene;
+    /**
+     * Which floor table this run climbs. Defence and Ascent are two tracks of the
+     * same length and shape (see data/ascentFloors.js), so progression, the floor
+     * plaque and the attempt pips are shared rather than duplicated per mode.
+     */
+    this.floors = FLOORS;
     this.floor = 1;
     this.lives = 3;
     this.clearedFloors = [];
   }
 
+  /** Switches tracks and starts that run from the bottom. */
+  setTrack(floors) {
+    this.floors = floors?.length ? floors : FLOORS;
+    this.resetRun();
+  }
+
   get config() {
-    return getFloor(this.floor);
+    return this.floors[Math.min(Math.max(1, this.floor), this.total) - 1];
   }
 
   get total() {
-    return FLOOR_COUNT;
+    return this.floors.length;
   }
 
   get isFinalFloor() {
-    return this.floor >= FLOOR_COUNT;
+    return this.floor >= this.total;
   }
 
   get runComplete() {
-    return this.clearedFloors.length >= FLOOR_COUNT;
+    return this.clearedFloors.length >= this.total;
   }
 
   get runOver() {
@@ -65,7 +77,7 @@ export default class TowerSystem {
   /** Static description used by the intro banner. */
   brief() {
     const cfg = this.config;
-    return { title: cfg.title, brief: cfg.brief, floor: cfg.floor, total: FLOOR_COUNT };
+    return { title: cfg.title, brief: cfg.brief, floor: cfg.floor, total: this.total };
   }
 
   static all() {

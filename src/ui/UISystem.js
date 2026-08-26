@@ -14,6 +14,7 @@
  * you could lose a run, or eat a Shield Bash, with no warning either was coming.
  */
 
+import { MODE } from '../config.js';
 import { MONSTERS, MONSTER_BY_ID, ROLE_LABEL } from '../data/monsters.js';
 
 const $ = (id) => document.getElementById(id);
@@ -71,6 +72,7 @@ export default class UISystem {
       livesPips: $('lives-pips'),
       heroFace: $('hero-face'),
       heroName: $('hero-name'),
+      heroRole: $('hero-role'),
       heroTags: $('hero-tags'),
       heroHpText: $('hero-hp-text'),
       heroHpFill: $('hero-hp-fill'),
@@ -96,7 +98,15 @@ export default class UISystem {
       inspectActive: $('inspect-active'),
       mainMenu: $('main-menu'),
       menuStart: $('menu-start'),
+      menuAscent: $('menu-ascent'),
       menuLab: $('menu-lab'),
+      bottombar: $('bottombar'),
+      ascentBar: $('ascent-bar'),
+      ascentWave: $('ascent-wave'),
+      ascentWavePips: $('ascent-wave-pips'),
+      ascentLeft: $('ascent-left'),
+      ascentPhase: $('ascent-phase'),
+      ascentActions: $('ascent-actions'),
       skillLab: $('skill-lab'),
       labHeroList: $('lab-hero-list'),
       labMonsterList: $('lab-monster-list'),
@@ -110,15 +120,18 @@ export default class UISystem {
     this.cardEls = new Map();
     this.shardEls = [];
     this.skillEls = new Map();
+    this.actionEls = new Map();
     this.hintTimer = null;
     this.bannerAction = null;
     this.inspectId = null;
+    this.mode = MODE.DEFENSE;
 
-    this.#buildPips();
+    this.buildPips();
     this.#buildShards();
 
     this.el.bannerBtn.addEventListener('click', () => this.bannerAction?.());
     this.el.menuStart.addEventListener('click', () => this.menuAction?.());
+    this.el.menuAscent.addEventListener('click', () => this.menuAscentAction?.());
     this.el.menuLab.addEventListener('click', () => this.menuLabAction?.());
     this.el.labReset.addEventListener('click', () => this.labResetAction?.());
     this.el.labExit.addEventListener('click', () => this.labExitAction?.());
@@ -136,6 +149,9 @@ export default class UISystem {
       }
       return;
     }
+    // In Ascent mode the digits belong to the hero's own abilities, which
+    // PlayerController reads straight off the keyboard.
+    if (this.mode !== MODE.DEFENSE) return;
     const order = this.order ?? [];
     const idx = Number(e.key) - 1;
     if (Number.isInteger(idx) && idx >= 0 && idx < order.length) {
@@ -145,8 +161,9 @@ export default class UISystem {
 
   // ═══ one-time structure ══════════════════════════════════════════════════
 
-  /** One pip per floor of the tower, and one per remaining attempt. */
-  #buildPips() {
+  /** One pip per floor of the tower, and one per remaining attempt. Re-runnable:
+   *  switching game modes switches floor tracks, and the row must follow. */
+  buildPips() {
     const { tower } = this.scene;
     const fill = (host, n) => {
       host.innerHTML = '';
@@ -182,6 +199,66 @@ export default class UISystem {
   /** The room's name, inscribed in the top bar. Called once per floor. */
   setFloor(cfg) {
     this.el.floorTitle.textContent = cfg.title.toUpperCase();
+  }
+
+  // ═══ mode ════════════════════════════════════════════════════════════════
+  /**
+   * Swaps the whole bottom bar and relabels the dossier.
+   *
+   * The top bar needs no structural change between modes — HP, statuses and skill
+   * cooldowns are exactly what you want to know whether the hero is hunting you or
+   * being you. Only the word "INTRUDER" is a lie in Ascent mode.
+   */
+  setMode(mode) {
+    this.mode = mode;
+    const ascent = mode === MODE.ASCENT;
+    document.body.classList.toggle('ascent-mode', ascent);
+    this.el.bottombar.classList.toggle('hidden', ascent);
+    this.el.ascentBar.classList.toggle('hidden', !ascent);
+    this.el.heroRole.textContent = ascent ? 'YOU' : 'INTRUDER';
+    this.buildPips();
+    if (!ascent) {
+      this.el.ascentActions.innerHTML = '';
+      this.actionEls.clear();
+    }
+    document.body.classList.remove('danger');
+  }
+
+  /**
+   * One button per ability, in the order the keyboard presents them. They are
+   * real buttons — the same ability is reachable by mouse or by key, so the mode
+   * is playable without knowing the layout by heart.
+   */
+  buildAscentActions(def, onAction) {
+    const host = this.el.ascentActions;
+    host.innerHTML = '';
+    this.actionEls.clear();
+
+    const entries = [
+      { key: 'CLK', id: 'basic', name: def.basicName ?? 'Attack', tone: 'basic', cooldown: def.basicInterval },
+      ...def.skills.map((skill, i) => ({
+        key: String(i + 1), id: `skill:${i}`, name: skill.name, tone: 'skill', skill,
+      })),
+      { key: '4', id: 'ult', name: def.ultimate.name, tone: 'ult', skill: def.ultimate },
+    ];
+
+    for (const entry of entries) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `act ${entry.tone}`;
+      btn.innerHTML = `<i class="cd"></i>
+        <span class="act-key">${entry.key}</span>
+        <span class="act-name">${entry.name}</span>
+        <span class="act-meta">${entry.skill
+    ? (entry.skill.cooldown >= 999 ? 'once per floor' : `${entry.skill.cooldown}s`)
+    : 'basic attack'}</span>`;
+      if (entry.skill) {
+        btn.title = `${entry.skill.name} — ${entry.skill.telegraph.label}`;
+      }
+      btn.addEventListener('click', (e) => { e.stopPropagation(); onAction?.(entry.id); });
+      host.appendChild(btn);
+      this.actionEls.set(entry.id, { btn, cd: btn.querySelector('.cd'), skill: entry.skill });
+    }
   }
 
   /** Sets the intruder's name and portrait. Called once per floor. */
@@ -255,33 +332,85 @@ Active:  ${def.active.name} — ${def.active.desc}`;
       this.#renderHero(hero);
       this.#renderSkills(hero);
     }
-    this.#renderMana(mana, summon);
 
-    this.el.essenceFill.style.width = `${mana.poolPct * 100}%`;
-    this.el.essenceText.textContent = Math.ceil(mana.pool);
-    this.el.essenceFill.classList.toggle('low', mana.poolPct < 0.25);
+    if (this.mode === MODE.ASCENT) {
+      this.#renderAscent(hero);
+    } else {
+      this.#renderMana(mana, summon);
 
-    this.el.aliveNum.textContent = monsters.filter((m) => m.alive).length;
+      this.el.essenceFill.style.width = `${mana.poolPct * 100}%`;
+      this.el.essenceText.textContent = Math.ceil(mana.pool);
+      this.el.essenceFill.classList.toggle('low', mana.poolPct < 0.25);
 
-    // ── cards: affordability + selection ──
-    for (const [id, el] of this.cardEls) {
-      const def = MONSTER_BY_ID[id];
-      el.classList.toggle('selected', summon.selectedId === id);
-      el.classList.toggle('poor', !mana.canAfford(def.cost));
-      el.classList.toggle('disabled', !battle.acceptsInput);
+      this.el.aliveNum.textContent = monsters.filter((m) => m.alive).length;
+
+      // ── cards: affordability + selection ──
+      for (const [id, el] of this.cardEls) {
+        const def = MONSTER_BY_ID[id];
+        el.classList.toggle('selected', summon.selectedId === id);
+        el.classList.toggle('poor', !mana.canAfford(def.cost));
+        el.classList.toggle('disabled', !battle.acceptsInput);
+      }
     }
+
     // ── telegraph callout: the loudest thing on screen while winding up ──
     const kind = telegraph.currentKind();
     if (kind) {
+      const mine = this.mode === MODE.ASCENT;
       this.el.callout.className = `show ${kind}`;
-      this.el.callout.textContent = kind === 'buff'
-        ? 'HERO IS BUFFING'
-        : (kind === 'control' ? 'CONTROL INCOMING' : 'AoE INCOMING');
+      this.el.callout.textContent = mine
+        ? (kind === 'buff' ? 'EMPOWERING' : (kind === 'control' ? 'BINDING' : 'CASTING'))
+        : (kind === 'buff' ? 'HERO IS BUFFING'
+          : (kind === 'control' ? 'CONTROL INCOMING' : 'AoE INCOMING'));
     } else {
       this.el.callout.className = '';
     }
 
-    document.body.classList.toggle('danger', battle.inDanger);
+    document.body.classList.toggle('danger',
+      this.mode === MODE.ASCENT ? this.scene.ascent.inDanger : battle.inDanger);
+  }
+
+  /** Wave progress plus a cooldown fill on every ability button. */
+  #renderAscent(hero) {
+    const { ascent } = this.scene;
+    const total = ascent.waveCount;
+
+    this.el.ascentWave.textContent = `${ascent.waveNumber}/${total}`;
+    this.el.ascentLeft.textContent = ascent.monstersLeft;
+    this.el.ascentPhase.textContent = ascent.phaseLabel;
+    this.el.ascentPhase.className = ascent.isFinalWave ? 'final' : '';
+
+    if (this.el.ascentWavePips.children.length !== total) {
+      this.el.ascentWavePips.innerHTML = '<i class="pip"></i>'.repeat(total);
+    }
+    const pips = this.el.ascentWavePips.children;
+    for (let i = 0; i < pips.length; i++) {
+      const done = i + 1 < ascent.waveNumber || ascent.state === 'cleared';
+      pips[i].className = `pip${done ? ' done' : ''}${i + 1 === ascent.waveNumber && !done ? ' here' : ''}`;
+    }
+
+    if (!hero) return;
+    const now = this.scene.clock;
+    for (const [id, { btn, cd, skill }] of this.actionEls) {
+      let left = 0;
+      let span = 1;
+      if (skill) {
+        left = Math.max(0, (hero.skillCd[skill.id] ?? 0) - now);
+        span = Math.max(0.001, skill.cooldown);
+      } else {
+        left = Math.max(0, hero.basicCooldown);
+        span = Math.max(0.001, hero.def.basicInterval);
+      }
+      const spent = !!skill?.once && hero.skillUsed[skill.id];
+      const armed = !spent && left <= 0;
+      const firing = !!skill && hero.pendingSkill?.id === skill.id;
+
+      cd.style.height = spent ? '0%' : `${Math.min(100, (left / span) * 100)}%`;
+      btn.classList.toggle('armed', armed && !firing);
+      btn.classList.toggle('firing', firing);
+      btn.classList.toggle('spent', !!spent);
+      void id;
+    }
   }
 
   #renderPips(tower) {
@@ -410,6 +539,8 @@ Active:  ${def.active.name} — ${def.active.desc}`;
     this.el.bannerTitle.textContent = title;
     this.el.bannerSub.innerHTML = sub ?? '';
     this.el.bannerBtn.textContent = button ?? 'CONTINUE';
+    // A selection banner may have left the button disabled.
+    this.el.bannerBtn.disabled = false;
     this.el.banner.className = tone;
     this.bannerAction = onAction;
     this.el.bannerBtn.focus();
@@ -462,9 +593,44 @@ Active:  ${def.active.name} — ${def.active.desc}`;
     sync();
   }
 
-  showMainMenu(onStart, onLab) {
+  /**
+   * Ascent mode: pick which hero climbs. Same banner chrome as the roster draft,
+   * but a single choice — the kit you take is the whole run.
+   */
+  showHeroSelection(heroDefs, onConfirm) {
+    let picked = null;
+    const sync = () => {
+      this.el.bannerBtn.textContent = picked ? 'CLIMB' : 'PICK A HERO';
+      this.el.bannerBtn.disabled = !picked;
+      this.el.bannerSub.querySelectorAll('[data-hero-id]').forEach((el) => {
+        el.classList.toggle('picked', el.dataset.heroId === picked);
+      });
+    };
+
+    this.el.bannerTitle.textContent = 'CHOOSE YOUR CLIMBER';
+    this.el.bannerSub.innerHTML = `<span class="roster-rule">One hero, four floors. Its complete kit comes with it.</span>
+      <div class="roster-picks">${heroDefs.map((def) => `
+        <button type="button" class="roster-pick hero-pick" data-hero-id="${def.id}">
+          <span class="roster-art"><img alt="" /></span>
+          <span class="roster-copy"><b>${def.name}</b>
+            <em>${def.basicRange > 200 ? 'Ranged' : 'Melee'} · ${def.hp} HP · ${def.atk} ATK</em>
+            <small>${def.skills.map((s) => s.name).join(' · ')}</small>
+            <strong>${def.ultimate.name}</strong></span>
+        </button>`).join('')}</div>`;
+    this.el.banner.className = 'roster';
+    this.bannerAction = () => { if (picked) onConfirm(picked); };
+    this.el.bannerSub.querySelectorAll('[data-hero-id]').forEach((el) => {
+      const def = heroDefs.find((h) => h.id === el.dataset.heroId);
+      setPortrait(this.scene, el.querySelector('.roster-art img'), `${def.art}_idle0`, 1);
+      el.addEventListener('click', () => { picked = el.dataset.heroId; sync(); });
+    });
+    sync();
+  }
+
+  showMainMenu(onStart, onLab, onAscent) {
     this.menuAction = onStart;
     this.menuLabAction = onLab;
+    this.menuAscentAction = onAscent;
     this.el.mainMenu.classList.remove('hidden');
     this.el.menuStart.focus();
   }
@@ -473,6 +639,7 @@ Active:  ${def.active.name} — ${def.active.desc}`;
     this.el.mainMenu.classList.add('hidden');
     this.menuAction = null;
     this.menuLabAction = null;
+    this.menuAscentAction = null;
   }
 
   // ═══ skill lab ══════════════════════════════════════════════════════════

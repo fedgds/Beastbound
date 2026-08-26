@@ -3728,6 +3728,69 @@ export default class SkillSystem {
     }
   }
 
+  // ═══ hero basic attack ═══════════════════════════════════════════════════
+  /**
+   * The hero's real basic attack, minus the bookkeeping.
+   *
+   * Both drivers call this: HeroAI when the boss decides to swing, and
+   * PlayerController when the player presses attack in Ascent mode. Cooldown,
+   * state and animation belong to the caller — everything that *lands* lives
+   * here, so the two modes can never drift into dealing different damage.
+   *
+   * @param {object|null} target unit being swung at; out of reach or dead
+   *        resolves as a whiff (the swing still happens, nothing is hit).
+   * @param {object} [opts]
+   * @param {{x:number,y:number}} [opts.aim] where a projectile should fly when
+   *        there is nothing in reach. The player can shoot into empty space; the
+   *        AI never asks to, so omitting this keeps boss behaviour identical.
+   * @param {Array} [opts.targetList] units a projectile may collide with. A
+   *        player-fired bolt is a physical object that hits whatever it meets.
+   */
+  performHeroBasic(hero, target, opts = {}) {
+    const inReach = !!target?.alive && hero.distanceTo(target) <= hero.basicRange + 14;
+    const shard = hero.def.basicProjectile;
+
+    if (shard) {
+      // A pseudo-target lets an unaimed shot travel to a point on the floor.
+      const flyTo = inReach
+        ? target
+        : (opts.aim ? { x: opts.aim.x, y: opts.aim.y, spriteHeight: 0, alive: true } : null);
+      if (!flyTo) {
+        this.scene.fx.slash(hero.x + hero.facing * 22, hero.y - 26, hero.facing, 0x9fb6d8);
+        return;
+      }
+      this.scene.combat.fireProjectile(hero, flyTo, {
+        texture: shard.texture,
+        speed: shard.speed,
+        tint: shard.tint ?? 0xbff8ff,
+        trailColor: shard.trailColor ?? 0x91eaff,
+        trailLength: shard.trailLength ?? 20,
+        ...(opts.targetList ? { targetList: opts.targetList } : {}),
+        onHit: (hit) => {
+          this.scene.combat.strike(hero, hit, { color: shard.hitColor ?? 0x9cecff });
+          if (shard.slowMult) hit.applySlow(shard.slowMult, shard.slowSeconds);
+          this.scene.fx.skillBurst(hit.x, hit.y - hit.spriteHeight * 0.5,
+            shard.burstColor ?? 0xa9f5ff, shard.burstKind ?? 'arcane');
+        },
+      });
+      return;
+    }
+
+    if (!inReach) {
+      this.scene.fx.slash(hero.x + hero.facing * 22, hero.y - 26, hero.facing, 0x9fb6d8);
+      return;
+    }
+
+    if (hero.solarActive) {
+      this.performSolarBasic(hero, target);
+      return;
+    }
+
+    this.scene.fx.slash(hero.x + hero.facing * 22, hero.y - 26, hero.facing, COLORS.white);
+    this.scene.combat.strike(hero, target, { knockback: 8 });
+    this.scene.fx.hitstop(35);
+  }
+
   /** Beast-form basic: two solar claw rakes plus a smaller pursuing fire bolt. */
   performSolarBasic(hero, target) {
     if (!hero.solarTransformed || !target?.alive) return;

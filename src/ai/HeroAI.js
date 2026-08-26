@@ -275,43 +275,11 @@ export default class HeroAI {
 
   #resolveBasic(hero) {
     const target = hero.basicTarget;
-    const solar = hero.solarTransformed && this.scene.clock < hero.solarFuryUntil;
-    hero.basicCooldown = hero.def.basicInterval / (solar ? hero.solarAttackSpeedMult : 1);
+    hero.basicCooldown = hero.def.basicInterval / (hero.solarActive ? hero.solarAttackSpeedMult : 1);
     hero.setState(HERO_STATE.RECOVER, 0.16);
     hero.play('attack', true);
     this.scene.audio?.playSkill(hero);
-
-    if (!target?.alive || hero.distanceTo(target) > hero.basicRange + 14) {
-      this.scene.fx.slash(hero.x + hero.facing * 22, hero.y - 26, hero.facing, 0x9fb6d8);
-      return;
-    }
-
-    if (hero.def.basicProjectile) {
-      const shard = hero.def.basicProjectile;
-      this.scene.combat.fireProjectile(hero, target, {
-        texture: shard.texture,
-        speed: shard.speed,
-        tint: shard.tint ?? 0xbff8ff,
-        trailColor: shard.trailColor ?? 0x91eaff,
-        trailLength: shard.trailLength ?? 20,
-        onHit: (hit) => {
-          this.scene.combat.strike(hero, hit, { color: shard.hitColor ?? 0x9cecff });
-          if (shard.slowMult) hit.applySlow(shard.slowMult, shard.slowSeconds);
-          this.scene.fx.skillBurst(hit.x, hit.y - hit.spriteHeight * 0.5,
-            shard.burstColor ?? 0xa9f5ff, shard.burstKind ?? 'arcane');
-        },
-      });
-      return;
-    }
-
-    if (solar) {
-      this.scene.skills.performSolarBasic(hero, target);
-      return;
-    }
-
-    this.scene.fx.slash(hero.x + hero.facing * 22, hero.y - 26, hero.facing, COLORS.white);
-    this.scene.combat.strike(hero, target, { knockback: 8 });
-    this.scene.fx.hitstop(35);
+    this.scene.skills.performHeroBasic(hero, target);
   }
 
   /** Three fixed random storm centres: the warning resolves into real terrain. */
